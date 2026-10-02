@@ -1,36 +1,36 @@
 //! Pencetakan NFT nota lewat Metaplex Core (opsional).
 //!
-//! Dua jalur yang sah, dan pilihannya harus sadar risiko:
+//! Two valid paths, and the choice has to be risk-aware:
 //!
-//! **Jalur A — relayer (dipakai default di repo ini).**
-//! Nota dicatat sebagai PDA `NoteAccount` lewat instruksi `record_note`
-//! (lihat `lib.rs`). Aset Metaplex Core dicetak oleh relayer lewat SDK
-//! TypeScript, lalu alamat asetnya direkam ke PDA tersebut. Kelebihan: tidak
-//! menambah dependensi on-chain, mudah diaudit, bisa dicetak ke dompet pembeli
-//! tanpa biaya program. Kekurangan: percetakan bergantung pada relayer.
+//! **Path A — relayer (the default in this repo).**
+//! The receipt is recorded as a `NoteAccount` PDA via the `record_note`
+//! instruction (see `lib.rs`). The relayer mints the Metaplex Core asset via the
+//! TypeScript SDK, then records the asset address into that PDA. Upside: no
+//! extra on-chain dependency, easy to audit, and it can be minted to the buyer
+//! wallet with no program cost. Downside: minting depends on the relayer.
 //!
-//! **Jalur B — CPI dari program (fitur `metaplex-core`).**
-//! Program mencetak aset sendiri sehingga tidak ada pihak yang bisa menahan
-//! nota. Kekurangan: menambah dependensi `mpl-core` pada program yang memegang
-//! dana, sehingga permukaan audit ikut membesar.
+//! **Path B — CPI from the program (`metaplex-core` feature).**
+//! The program mints the asset itself, so nobody can withhold the
+//! receipt. Downside: it adds an `mpl-core` dependency to a program that holds
+//! funds, which widens the audit surface.
 //!
-//! Saran urutan: Tahap Bukti memakai Jalur A. Jalur B dibuka setelah audit
+//! Suggested order: the Proof Stage uses Path A. Path B opens after an audit
 //! program escrow, karena menambah CPI ke program pihak ketiga berarti
-//! menambah asumsi keamanan pada jalur yang memindahkan uang.
+//! adds security assumptions to the path that moves money.
 //!
-//! CATATAN: kode di bawah belum dikompilasi pada lingkungan pengembangan ini
-//! (toolchain Solana tidak tersedia). Cocokkan API `mpl-core` dengan versi yang
-//! benar-benar dipasang sebelum mengaktifkan fitur.
+//! NOTE: the code below has not been compiled in this development environment
+//! (no Solana toolchain). Match the `mpl-core` API to the version actually
+//! installed before enabling the feature.
 
 #[cfg(feature = "metaplex-core")]
 mod cpi {
     use anchor_lang::prelude::*;
     use mpl_core::{instructions::CreateV2CpiBuilder, ID as MPL_CORE_PROGRAM_ID};
 
-    /// Mencetak aset nota ke dompet pemilik nota.
+    /// Mints the receipt asset into the receipt owner wallet.
     ///
-    /// `data_hash` adalah hash kanonik dari metadata nota (tanpa foto) sehingga
-    /// isi nota dapat diverifikasi ulang dari event log off-chain.
+    /// `data_hash` is the canonical hash of the receipt metadata (no photos), so the
+    /// receipt contents can be re-verified from the off-chain event log.
     pub fn mint_note_asset<'info>(
         payer: &AccountInfo<'info>,
         asset: &AccountInfo<'info>,
@@ -58,8 +58,8 @@ mod cpi {
             builder.collection(Some(collection));
         }
 
-        // Hash bukti ditulis sebagai data tambahan pada plugin/atribut aset
-        // sesuai skema metadata yang dipakai (lihat /api/notes/:id/metadata).
+        // The evidence hash is written as extra data on the asset plugin/attributes
+        // per the metadata schema in use (see /api/notes/:id/metadata).
         let _ = data_hash;
 
         builder.invoke()

@@ -1,15 +1,15 @@
 /**
- * Uji Anchor untuk program VIN.
+  * Anchor tests for the VIN program.
  *
- * STATUS: belum dijalankan di lingkungan pengembangan ini karena toolchain
- * Solana/Rust tidak tersedia (sandbox hanya membuka npm/PyPI/GitHub; static.
- * rust-lang.org dan crates.io diblokir). Jalankan `anchor test` di mesin/CI yang
+  * STATUS: not yet run in this development environment because the Solana/Rust
+  * toolchain is unavailable (the sandbox only reaches npm/PyPI/GitHub; static.
+  * rust-lang.org and crates.io are blocked). Run `anchor test` on a machine or CI
  * punya toolchain — lihat .github/workflows/anchor.yml.
  *
- * Uji ini mengunci invarian yang SAMA dengan model ledger TypeScript
- * (packages/shared/src/vault-spec.ts) yang sudah diuji properti di sini.
+  * These tests lock the SAME invariants as the TypeScript ledger model
+  * (packages/shared/src/vault-spec.ts), which is property-tested here.
  * Jadi saat program benar-benar dikompilasi, kita membandingkan dua implementasi
- * dari aturan yang sama — bukan menguji satu implementasi sendirian.
+  * from the same rules — not testing one implementation in isolation.
  */
 
 import * as anchor from '@coral-xyz/anchor';
@@ -83,8 +83,8 @@ describe('vin-anchor', () => {
     feeToken = await createAccount(provider.connection, buyer, usdcMint, feeTreasury.publicKey);
 
     await mintTo(provider.connection, buyer, usdcMint, buyerToken, buyer, 100_000_000_000n);
-    // Bengkel butuh saldo sendiri untuk mengunci jaminan (SPL Token memeriksa
-    // owner token account, jadi jaminan tidak bisa dibayar dari saldo pembeli).
+    // The workshop needs its own balance to lock a bond (SPL Token checks the
+    // token account owner, so a bond cannot be paid from the buyer balance).
     await mintTo(provider.connection, buyer, usdcMint, inspectorToken, buyer, 1_000_000_000n);
 
     await program.methods
@@ -105,7 +105,7 @@ describe('vin-anchor', () => {
     }
   });
 
-  it('1. menolak open_deal bila bengkel belum mengunci jaminan (BondRequired)', async () => {
+  it('1. rejects open_deal when the workshop has not locked a bond (BondRequired)'
     deal = dealPda(buyer.publicKey);
     await assert.rejects(
       program.methods
@@ -120,18 +120,18 @@ describe('vin-anchor', () => {
           usdcMint,
         })
         .rpc(),
-      /BondRequired|Jaminan/,
+      /BondRequired|Bond/,
     );
   });
 
-  it('2. membuka deal dengan DUA vault terpisah setelah jaminan terkunci', async () => {
-    // Bengkel mengunci jaminan kapasitas.
+  it('2. opens a deal with TWO separate vaults once the bond is locked'
+    // The workshop locks a capacity bond.
     await program.methods
       .lockBond(new anchor.BN(BOND_AMOUNT.toString()), 1)
       .accounts({
         bonder: inspector.publicKey,
         actor: actorPda(inspector.publicKey),
-        bonderToken: inspectorToken, // milik bengkel: SPL Token memeriksa owner
+        // owned by the workshop: SPL Token checks the owner
         bondVault: bondVaultPda(actorPda(inspector.publicKey)),
         tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
       })
@@ -159,7 +159,7 @@ describe('vin-anchor', () => {
     assert.equal(inspectionVault.amount, 0n);
   });
 
-  it('3. menolak pendanaan yang melebihi jumlah yang dikunci (OverFunded)', async () => {
+  it('3. rejects funding above the locked amount (OverFunded)'
     await assert.rejects(
       program.methods
         .fundLeg(LEG_VEHICLE, new anchor.BN((VEHICLE_AMOUNT + 1n).toString()))
@@ -172,7 +172,7 @@ describe('vin-anchor', () => {
         })
         .signers([buyer])
         .rpc(),
-      /OverFunded|Dana melebihi/,
+      /OverFunded|Funds exceed/,
     );
   });
 
@@ -207,7 +207,7 @@ describe('vin-anchor', () => {
     assert.equal(inspectionVault.amount, INSPECTION_AMOUNT);
   });
 
-  it('5. uang inspeksi bisa cair lebih dulu, dana kendaraan tetap terkunci', async () => {
+  it('5. inspection funds can release first while vehicle funds stay locked'
     await program.methods
       .releaseLeg(LEG_INSPECTION, new anchor.BN(INSPECTION_AMOUNT.toString()), hash(21), new anchor.BN(0))
       .accounts({
@@ -226,15 +226,15 @@ describe('vin-anchor', () => {
     assert.equal((await getAccount(provider.connection, vaultPda(deal, LEG_VEHICLE))).amount, VEHICLE_AMOUNT);
   });
 
-  it('6. REGRESI: deal beku menolak release_leg DAN refund_leg (tidak bisa melewati arbitrase)', async () => {
+  it('6. REGRESSION: a frozen deal rejects release_leg AND refund_leg (no bypassing arbitration)'
     await program.methods
       .freezeDeal(hash(31))
       .accounts({ caller: buyer.publicKey, deal })
       .signers([buyer])
       .rpc();
 
-    // Regresi dari temuan uji properti: refund_leg sempat tidak memeriksa `frozen`,
-    // sehingga relayer bisa mengembalikan dana sebelum arbiter memutuskan.
+    // Regression from the property test finding: refund_leg once ignored `frozen`,
+    // so a relayer could refund before the arbiter ruled.
     await assert.rejects(
       program.methods
         .refundLeg(LEG_VEHICLE, hash(32))
@@ -268,7 +268,7 @@ describe('vin-anchor', () => {
     );
   });
 
-  it('7. putusan arbitrase harus TEPAT HABIS; pembagian yang kurang ditolak', async () => {
+  it('7. an arbitration ruling must add up EXACTLY; a short split is rejected'
     await assert.rejects(
       program.methods
         .resolveDispute(DECISION_SPLIT, new anchor.BN('1000000'), new anchor.BN('2000000'), new anchor.BN(0), hash(41))
@@ -287,13 +287,13 @@ describe('vin-anchor', () => {
     );
   });
 
-  it('8. putusan refund_buyer mengosongkan kedua vault tanpa sisa', async () => {
+  it('8. a refund_buyer ruling empties both vaults with nothing left'
     await program.methods
       .resolveDispute(
         DECISION_BOND_SLASHED,
         new anchor.BN(VEHICLE_AMOUNT.toString()),
         new anchor.BN(0),
-        new anchor.BN(0), // bengkel sudah dibayar di langkah 5
+        // the workshop was already paid in step 5
         hash(42),
       )
       .accounts({
@@ -312,7 +312,7 @@ describe('vin-anchor', () => {
     assert.equal((await getAccount(provider.connection, vaultPda(deal, LEG_INSPECTION))).amount, 0n);
   });
 
-  it('9. potongan jaminan masuk KAS SENGKETA, bukan dompet admin/relayer', async () => {
+  it('9. a slashed bond goes to the DISPUTE FUND, not an admin/relayer wallet'
     const before = (await getAccount(provider.connection, disputeFund)).amount;
     await program.methods
       .slashBond(new anchor.BN(BOND_AMOUNT.toString()), hash(51))
@@ -331,15 +331,15 @@ describe('vin-anchor', () => {
   });
 
   it('10. JALUR BAHAGIA: kedua leg tuntas -> deal completed -> nota boleh dicatat', async () => {
-    // Regresi temuan alur: sebelumnya `release_leg` tidak pernah menandai deal
-    // `completed`, sehingga pada jalur bahagia nota TIDAK PERNAH bisa dicatat.
+    // Regression for the flow finding: `release_leg` never marked the deal
+    // `completed`, so on the happy path a receipt could NEVER be recorded.
     const buyer2 = Keypair.generate();
     const sig = await provider.connection.requestAirdrop(buyer2.publicKey, 2 * LAMPORTS_PER_SOL);
     await provider.connection.confirmTransaction(sig);
     const buyer2Token = await createAccount(provider.connection, buyer2, usdcMint, buyer2.publicKey);
     await mintTo(provider.connection, buyer2, usdcMint, buyer2Token, buyer2, 100_000_000_000n);
 
-    // Jaminan bengkel dikunci ulang (habis dipotong pada uji 9).
+    // The workshop bond is locked again (it was slashed in test 9).
     await program.methods
       .lockBond(new anchor.BN(BOND_AMOUNT.toString()), 1)
       .accounts({
@@ -382,7 +382,7 @@ describe('vin-anchor', () => {
         .rpc();
     }
 
-    // Dana inspeksi cair setelah laporan (off-chain) diverifikasi relayer.
+    // Inspection funds release after the relayer verifies the (off-chain) report.
     await program.methods
       .releaseLeg(LEG_INSPECTION, new anchor.BN(INSPECTION_AMOUNT.toString()), hash(81), new anchor.BN(0))
       .accounts({
@@ -397,11 +397,11 @@ describe('vin-anchor', () => {
       .signers([relayer])
       .rpc();
 
-    // Setelah satu leg saja, deal BELUM selesai.
+    // With only one leg settled, the deal is NOT complete yet.
     let state = await program.account.dealAccount.fetch(deal2);
-    assert.equal(state.completed, false, 'satu leg belum menutup deal');
+    'one leg does not close the deal'
 
-    // Dana kendaraan cair setelah syarat serah terima terpenuhi (off-chain).
+    // Vehicle funds release once the handover terms are met (off-chain).
     await program.methods
       .releaseLeg(LEG_VEHICLE, new anchor.BN(VEHICLE_AMOUNT.toString()), hash(82), new anchor.BN(0))
       .accounts({
@@ -417,7 +417,7 @@ describe('vin-anchor', () => {
       .rpc();
 
     state = await program.account.dealAccount.fetch(deal2);
-    assert.equal(state.completed, true, 'kedua leg tuntas -> deal harus completed');
+    'both legs settled -> the deal must be completed'
 
     // Dan sekarang nota boleh dicatat.
     await program.methods
@@ -431,14 +431,14 @@ describe('vin-anchor', () => {
     assert.equal(Buffer.from(note.evidenceRoot).toString('hex'), Buffer.from(hash(83)).toString('hex'));
   });
 
-  it('11. nota: hanya setelah deal ditutup, dan tidak bisa ditimpa', async () => {
+  it('11. receipt: only after the deal closes, and it cannot be overwritten'
     await program.methods
       .recordNote(buyer.publicKey, new anchor.BN(1), hash(61), PublicKey.default)
       .accounts({ relayer: relayer.publicKey, deal, note: notePda(deal, 1n) })
       .signers([relayer])
       .rpc();
 
-    // Percobaan mencatat ulang nomor nota yang sama harus gagal (akun sudah ada).
+    // Re-recording the same receipt sequence must fail (the account exists).
     await assert.rejects(
       program.methods
         .recordNote(buyer.publicKey, new anchor.BN(1), hash(62), PublicKey.default)

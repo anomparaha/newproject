@@ -1,20 +1,20 @@
-//! # VIN — escrow, jaminan, dan registri nota (Solana / Anchor)
+//! # VIN — escrow, bonds, and receipt registry (Solana / Anchor)
 //!
-//! Prinsip yang dikodekan di sini:
+//! The principles encoded here:
 //!
-//! 1. **Dua vault terpisah.** Dana kendaraan dan dana inspeksi berada di dua
-//!    token account berbeda. Satu leg tidak pernah bisa menyentuh leg lain.
-//! 2. **Pelepasan butuh bukti.** Setiap pelepasan dana menerima `evidence_hash`
-//!    yang dicatat on-chain. Tanpa bukti, dana tidak cair (dijaga di off-chain
+//! 1. **Two separate vaults.** Vehicle funds and inspection funds live in two
+//!    different token accounts. One leg can never touch the other.
+//! 2. **Release needs evidence.** Every fund release takes an `evidence_hash`
+//!    recorded on-chain. Without evidence, funds do not move (enforced off-chain
 //!    event log dan divalidasi ulang di sini).
-//! 3. **Sengketa membekukan.** `release_leg` dan `refund_leg` ditolak selagi
-//!    `deal.frozen`; hanya arbiter yang bisa menyelesaikan.
-//! 4. **Potongan jaminan masuk kas sengketa**, tidak pernah ke dompet tim.
-//! 5. **Yang on-chain hanya hash.** VIN penuh, foto, BPKB, dan data pribadi
-//!    tetap off-chain. NFT nota adalah jejak klaim, bukan surat kendaraan.
+//! 3. **A dispute freezes.** `release_leg` and `refund_leg` are rejected while
+//!    `deal.frozen`; only the arbiter can settle.
+//! 4. **A slashed bond goes to the dispute fund**, never to the team wallet.
+//! 5. **Only hashes go on-chain.** Full VINs, photos, titles, and personal data
+//!    stay off-chain. The receipt NFT is a claim trail, not a vehicle title.
 //!
-//! STATUS: ditulis sebagai jalur produksi, **belum dikompilasi atau di-deploy**
-//! pada lingkungan pengembangan ini (toolchain Rust/Solana tidak tersedia di
+//! STATUS: written as a production path, **never compiled or deployed**
+//! in this development environment (no Rust/Solana toolchain available in
 //! sandbox). Jalankan `anchor build && anchor test` lalu ganti `declare_id!`.
 
 use anchor_lang::prelude::*;
@@ -22,11 +22,11 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
-/// Leg dana. Kendaraan dan inspeksi TIDAK PERNAH dicampur.
+/// Fund leg. Vehicle and inspection are NEVER mixed.
 pub const LEG_VEHICLE: u8 = 0;
 pub const LEG_INSPECTION: u8 = 1;
 
-/// Peran aktor. Sama dengan `ROLES` di paket @vin/shared.
+/// Actor role. Matches `ROLES` in the @vin/shared package.
 pub const ROLE_BUYER: u8 = 0;
 pub const ROLE_SELLER: u8 = 1;
 pub const ROLE_INSPECTOR: u8 = 2;
@@ -58,8 +58,8 @@ pub mod vin_anchor {
         config.admin = ctx.accounts.admin.key();
         config.arbiter = arbiter;
         config.relayer = relayer;
-        // Fee hanya bisa masuk ke alamat treasury yang dikunci di config.
-        // Relayer tidak boleh mengarahkan fee ke dompetnya sendiri.
+        // Fees can only go to the treasury address locked in config.
+        // A relayer must never route fees to its own wallet.
         config.fee_treasury = fee_treasury;
         config.dispute_fund = ctx.accounts.dispute_fund.key();
         config.fee_bps_vehicle = fee_bps_vehicle;
@@ -70,7 +70,7 @@ pub mod vin_anchor {
     }
 
     /// Admin (multisig) dapat mengganti relayer, arbiter, treasury fee, dan
-    /// menjeda program. Tidak ada instruksi yang bisa memindahkan dana ke admin.
+    /// pauses the program. No instruction can move funds to an admin.
     pub fn set_authorities(
         ctx: Context<AdminOnly>,
         relayer: Option<Pubkey>,
@@ -94,7 +94,7 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Aktor terdaftar dengan hash attestation identitas.
+    /// An actor registered with an identity attestation hash.
     /// Data identitas usaha tetap off-chain dan dapat dicabut.
     pub fn register_actor(ctx: Context<RegisterActor>, role: u8, attestation: [u8; 32]) -> Result<()> {
         require!(role <= ROLE_ARBITER, VinError::InvalidRole);
@@ -108,14 +108,14 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Identitas bisa dicabut. Aktor yang dicabut tidak boleh membuka deal baru.
+    /// Identity can be revoked. A revoked actor must not open new deals.
     pub fn revoke_actor(ctx: Context<AdminOnly>) -> Result<()> {
         ctx.accounts.actor.revoked = true;
         Ok(())
     }
 
-    /// Jaminan dikunci dalam stablecoin. Jaminan hanya untuk kelayakan dan
-    /// kapasitas operasional — token tidak membeli harga kendaraan.
+    /// Bonds are locked in stablecoin. A bond is for eligibility and
+    /// operating capacity — the token never buys a vehicle price.
     pub fn lock_bond(ctx: Context<LockBond>, amount: u64, purpose: u8) -> Result<()> {
         require!(amount > 0, VinError::ZeroAmount);
         require!(!ctx.accounts.actor.revoked, VinError::ActorRevoked);
@@ -141,8 +141,8 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Jaminan dikembalikan setelah deal bersih (dipicu relayer atas dasar event
-    /// log off-chain yang terbuka untuk diaudit).
+    /// The bond returns after a clean deal (triggered by the relayer based on the
+    /// auditable off-chain event log).
     pub fn return_bond(ctx: Context<SettleBond>, amount: u64, reason_hash: [u8; 32]) -> Result<()> {
         require!(amount > 0, VinError::ZeroAmount);
         let actor = &mut ctx.accounts.actor;
@@ -164,7 +164,7 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Membuka deal: dua vault dibuat terpisah dalam satu transaksi.
+    /// Opens a deal: two vaults are created separately in one transaction.
     pub fn open_deal(
         ctx: Context<OpenDeal>,
         vin_hash: [u8; 32],
@@ -176,7 +176,7 @@ pub mod vin_anchor {
         require!(!ctx.accounts.buyer_actor.revoked, VinError::ActorRevoked);
         require!(!ctx.accounts.seller_actor.revoked, VinError::ActorRevoked);
         require!(!ctx.accounts.inspector_actor.revoked, VinError::ActorRevoked);
-        // Bengkel wajib mengunci jaminan sebelum menerima order.
+        // A workshop must lock a bond before taking orders.
         require!(ctx.accounts.inspector_actor.bond_locked > 0, VinError::BondRequired);
 
         let deal = &mut ctx.accounts.deal;
@@ -206,13 +206,13 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Pembeli mendanai satu leg. Dua kali panggil (kendaraan, inspeksi).
+    /// The buyer funds one leg. Call twice (vehicle, inspection).
     pub fn fund_leg(ctx: Context<FundLeg>, leg: u8, amount: u64) -> Result<()> {
         require!(!ctx.accounts.deal.frozen, VinError::DealFrozen);
         require!(amount > 0, VinError::ZeroAmount);
 
-        // Vault dibatasi: dana masuk tidak boleh melebihi jumlah yang dikunci
-        // saat deal dibuka, sehingga saldo vault selalu bisa diaudit.
+        // The vault is capped: incoming funds must not exceed the amount locked
+        // when the deal opened, so the vault balance is always auditable.
         let (vault, current, expected) = match leg {
             LEG_VEHICLE => (
                 ctx.accounts.vehicle_vault.to_account_info(),
@@ -250,7 +250,7 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Sengketa membekukan deal. Boleh dipicu pembeli, penjual, atau bengkel.
+    /// A dispute freezes the deal. The buyer, seller, or workshop may trigger it.
     pub fn freeze_deal(ctx: Context<FreezeDeal>, reason_hash: [u8; 32]) -> Result<()> {
         let caller = ctx.accounts.caller.key();
         let deal = &ctx.accounts.deal;
@@ -266,10 +266,10 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Pelepasan dana satu leg. Hanya relayer (hot key platform) yang boleh,
-    /// dengan `evidence_hash` sebagai bukti yang dapat diaudit.
-    /// Dana kendaraan HANYA boleh lepas setelah syarat serah terima terpenuhi
-    /// di off-chain event log; tx ini menuntut hash bukti yang cocok.
+    /// Releases one leg. Only the relayer (the platform hot key) may call it,
+    /// with `evidence_hash` as auditable evidence.
+    /// Vehicle funds may ONLY release once the handover terms are met
+    /// in the off-chain event log; this tx requires a matching evidence hash.
     pub fn release_leg(
         ctx: Context<ReleaseLeg>,
         leg: u8,
@@ -279,7 +279,7 @@ pub mod vin_anchor {
     ) -> Result<()> {
         require!(amount > 0, VinError::ZeroAmount);
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
-        // Deal yang dibekukan atau sudah ditutup tidak boleh dilepas.
+        // A frozen or already closed deal must not release.
         require!(!ctx.accounts.deal.frozen, VinError::DealFrozen);
         require!(!ctx.accounts.deal.cancelled, VinError::DealCancelled);
         require!(!ctx.accounts.deal.completed, VinError::DealCompleted);
@@ -309,8 +309,8 @@ pub mod vin_anchor {
             already.checked_add(amount).ok_or(VinError::MathOverflow)? <= total,
             VinError::OverRelease
         );
-        // Fee tidak boleh melebihi batas bps yang dikonfigurasi, dan tujuannya
-        // dikunci oleh constraint akun ke config.fee_treasury.
+        // The fee must not exceed the configured bps cap, and its destination is
+        // locked by an account constraint to config.fee_treasury.
         let bps = match leg {
             LEG_VEHICLE => ctx.accounts.config.fee_bps_vehicle,
             _ => ctx.accounts.config.fee_bps_inspection,
@@ -322,8 +322,8 @@ pub mod vin_anchor {
             .ok_or(VinError::MathOverflow)?;
         require!(platform_fee_amount <= max_fee, VinError::FeeTooHigh);
 
-        // Semua nilai yang dipakai untuk menandatangani diambil sebagai salinan
-        // lebih dulu supaya tidak ada pinjaman ganda ke akun deal.
+        // Every value used for signing is copied first, so there is no double
+        // borrow of the deal account.
         let vin_hash = deal.vin_hash;
         let buyer_key = deal.buyer;
         let deal_bump = deal.bump;
@@ -341,7 +341,7 @@ pub mod vin_anchor {
             amount,
         )?;
         if platform_fee_amount > 0 {
-            // Fee platform diambil dari leg yang sama, ke alamat penerima fee.
+            // The platform fee is taken from the same leg, to the fee recipient address.
             token::transfer(
                 CpiContext::new_with_signer(
                     ctx.accounts.token_program.to_account_info(),
@@ -365,8 +365,8 @@ pub mod vin_anchor {
             }
         }
 
-        // Deal SELESAI ketika kedua leg sudah terlepas penuh. Bendera inilah yang
-        // membuka `record_note`; tanpa langkah ini nota tidak akan pernah bisa
+        // The deal is COMPLETE once both legs are fully released. This flag is what
+        // opens `record_note`; without this step a receipt could never be
         // dicatat on-chain dan alur bahagia berhenti di tengah jalan.
         if deal.vehicle_released_amount == deal.vehicle_amount
             && deal.inspection_released_amount == deal.inspection_amount
@@ -385,12 +385,12 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Pengembalian dana ke pembeli (pembatalan sebelum serah terima).
+    /// Refunds back to the buyer (cancellation before handover).
     ///
-    /// PENTING: deal yang DIBEKUKAN tidak boleh di-refund lewat instruksi ini.
-    /// Tanpa penjagaan ini, relayer bisa melewati arbitrase dengan mengembalikan
-    /// dana sebelum arbiter memutuskan — pembekuan sengketa jadi tidak ada artinya.
-    /// Pengembalian pasca-sengketa hanya lewat `resolve_dispute`.
+    /// IMPORTANT: a FROZEN deal must not be refunded through this instruction.
+    /// Without this guard, a relayer could bypass arbitration by refunding
+    /// before the arbiter rules — which would make the freeze meaningless.
+    /// Post-dispute refunds go only through `resolve_dispute`.
     pub fn refund_leg(ctx: Context<RefundLeg>, leg: u8, evidence_hash: [u8; 32]) -> Result<()> {
         let deal = &mut ctx.accounts.deal;
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
@@ -432,7 +432,7 @@ pub mod vin_anchor {
             _ => deal.inspection_released_amount = deal.inspection_amount,
         }
 
-        // Bila kedua leg sudah kembali ke pembeli, deal ditutup sebagai dibatalkan.
+        // When both legs are back with the buyer, the deal closes as cancelled.
         if deal.vehicle_released_amount == deal.vehicle_amount
             && deal.inspection_released_amount == deal.inspection_amount
         {
@@ -449,14 +449,14 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Putusan arbitrase untuk deal yang dibekukan.
+    /// Arbitration ruling for a frozen deal.
     ///
-    /// Akuntansi WAJIB tepat habis, supaya tidak ada dana tersangkut di vault:
+    /// Accounting MUST be exact, so no funds are stranded in the vault:
     ///   - leg kendaraan: `to_buyer + to_seller == sisa leg kendaraan`
-    ///   - leg inspeksi:  `to_inspector <= sisa leg inspeksi`, sisanya kembali ke pembeli
+    ///   - inspection leg: `to_inspector <= inspection leg remainder`, the rest to the buyer
     ///
-    /// Jadi bengkel yang sudah mengerjakan inspeksi tetap bisa dibayar walau deal
-    /// dibatalkan, dan tidak ada saldo yang menganggur tanpa pemilik.
+    /// So a workshop that did the inspection can still be paid even when the deal
+    /// is cancelled, and no balance sits idle without an owner.
     pub fn resolve_dispute(
         ctx: Context<ResolveDispute>,
         decision: u8,
@@ -485,7 +485,7 @@ pub mod vin_anchor {
             .checked_sub(deal.inspection_released_amount)
             .ok_or(VinError::MathOverflow)?;
 
-        // Keputusan menentukan POLA pembagian; jumlahnya tetap harus tepat habis.
+        // The decision sets the SPLIT pattern; the amounts must still add up exactly.
         match decision {
             DECISION_REFUND_BUYER | DECISION_BOND_SLASHED => {
                 require!(to_buyer == vehicle_remaining, VinError::InexactSettlement);
@@ -563,7 +563,7 @@ pub mod vin_anchor {
             .checked_add(inspection_refund_to_buyer)
             .ok_or(VinError::MathOverflow)?;
 
-        // Setelah putusan, saldo kedua leg harus habis sampai nol.
+        // After the ruling both legs must be drained to zero.
         require!(
             deal.vehicle_released_amount == deal.vehicle_amount,
             VinError::InexactSettlement
@@ -591,8 +591,8 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Potongan jaminan. Hanya arbiter, dan hasilnya masuk KAS SENGKETA —
-    /// tidak pernah ke dompet tim platform.
+    /// Bond slash. Arbiter only, and the proceeds go to the DISPUTE FUND —
+    /// never to the platform team wallet.
     pub fn slash_bond(ctx: Context<SlashBond>, amount: u64, evidence_hash: [u8; 32]) -> Result<()> {
         require!(ctx.accounts.arbiter.key() == ctx.accounts.config.arbiter, VinError::Unauthorized);
         require!(amount > 0, VinError::ZeroAmount);
@@ -620,8 +620,8 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Registri nota. Hanya hash: root bukti, VIN hash, dan alamat asset nota
-    /// (Metaplex Core) bila sudah dicetak. NFT adalah jejak klaim, bukan title.
+    /// Receipt registry. Hashes only: evidence root, VIN hash, and the receipt asset
+    /// address (Metaplex Core) once minted. The NFT is a claim trail, not a title.
     pub fn record_note(
         ctx: Context<RecordNote>,
         owner: Pubkey,
@@ -666,8 +666,8 @@ pub struct Config {
     pub admin: Pubkey,
     pub arbiter: Pubkey,
     pub relayer: Pubkey,
-    /// Pemilik token account penerima fee. Fee platform TIDAK PERNAH bisa
-    /// diarahkan ke dompet arbiter atau relayer.
+    /// Owner of the token account that receives the fee. The platform fee can NEVER
+    /// be routed to an arbiter or relayer wallet.
     pub fee_treasury: Pubkey,
     pub dispute_fund: Pubkey,
     pub fee_bps_vehicle: u16,
@@ -696,7 +696,7 @@ impl ActorAccount {
 
 #[account]
 pub struct DealAccount {
-    /// Hanya hash VIN yang on-chain.
+    /// Only the VIN hash goes on-chain.
     pub vin_hash: [u8; 32],
     pub buyer: Pubkey,
     pub seller: Pubkey,
@@ -771,7 +771,7 @@ pub struct AdminOnly<'info> {
 pub struct RegisterActor<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    /// CHECK: hanya alamat dompet, tidak dibaca.
+    /// CHECK: wallet address only, never read.
     pub wallet: UncheckedAccount<'info>,
     #[account(
         init,
@@ -836,9 +836,9 @@ pub struct OpenDeal<'info> {
     pub seller_actor: Account<'info, ActorAccount>,
     #[account(seeds = [b"actor", inspector.key().as_ref()], bump = inspector_actor.bump)]
     pub inspector_actor: Account<'info, ActorAccount>,
-    /// CHECK: dompet penjual; identitas diperiksa lewat seller_actor.
+    /// CHECK: seller wallet; identity is checked via seller_actor.
     pub seller: UncheckedAccount<'info>,
-    /// CHECK: dompet bengkel; identitas diperiksa lewat inspector_actor.
+    /// CHECK: workshop wallet; identity is checked via inspector_actor.
     pub inspector: UncheckedAccount<'info>,
     #[account(
         init,
@@ -848,7 +848,7 @@ pub struct OpenDeal<'info> {
         bump
     )]
     pub deal: Account<'info, DealAccount>,
-    /// Vault dana kendaraan.
+    /// Vehicle fund vault.
     #[account(
         init,
         payer = buyer,
@@ -858,7 +858,7 @@ pub struct OpenDeal<'info> {
         bump
     )]
     pub vehicle_vault: Account<'info, TokenAccount>,
-    /// Vault dana inspeksi — terpisah dari vault kendaraan.
+    /// Inspection fund vault — separate from the vehicle vault.
     #[account(
         init,
         payer = buyer,
@@ -914,7 +914,7 @@ pub struct ReleaseLeg<'info> {
     #[account(mut, token::mint = inspection_vault.mint)]
     pub inspector_token: Account<'info, TokenAccount>,
     /// Penerima fee platform. Constraint mint + authority memastikan relayer
-    /// tidak bisa mengalihkan fee ke dompet lain.
+    /// cannot divert the fee to another wallet.
     #[account(
         mut,
         token::mint = vehicle_vault.mint,
@@ -986,8 +986,8 @@ pub struct RecordNote<'info> {
     pub config: Account<'info, Config>,
     #[account(seeds = [b"deal", deal.vin_hash.as_ref(), deal.buyer.as_ref()], bump = deal.bump)]
     pub deal: Account<'info, DealAccount>,
-    // `init` (bukan init_if_needed): satu nomor nota hanya bisa dicatat SEKALI.
-    // Nota adalah jejak klaim - tidak boleh bisa ditimpa.
+    // `init` (not init_if_needed): a receipt sequence can be recorded only ONCE.
+    // A receipt is a claim trail - it must never be overwritten.
     #[account(
         init,
         payer = relayer,
@@ -1114,7 +1114,7 @@ pub struct DisputeResolved {
     pub to_buyer: u64,
     pub to_seller: u64,
     pub to_inspector: u64,
-    /// Sisa leg inspeksi yang dikembalikan ke pembeli (mis. bengkel belum bekerja).
+    /// Inspection leg remainder refunded to the buyer (e.g. the workshop never worked).
     pub inspection_refund_to_buyer: u64,
     pub evidence_hash: [u8; 32],
 }
@@ -1130,44 +1130,44 @@ pub struct NoteRecorded {
 
 #[error_code]
 pub enum VinError {
-    #[msg("Fee di atas batas yang diizinkan")]
+    #[msg("Fee above the allowed cap")]
     FeeTooHigh,
-    #[msg("Jumlah harus lebih besar dari nol")]
+    #[msg("Amount must be greater than zero")]
     ZeroAmount,
-    #[msg("Leg dana tidak dikenal")]
+    #[msg("Unknown fund leg")]
     InvalidLeg,
-    #[msg("Peran aktor tidak dikenal")]
+    #[msg("Unknown actor role")]
     InvalidRole,
-    #[msg("Putusan arbitrase tidak dikenal")]
+    #[msg("Unknown arbitration decision")]
     InvalidDecision,
-    #[msg("Identitas aktor sudah dicabut")]
+    #[msg("Actor identity has been revoked")]
     ActorRevoked,
     #[msg("Program sedang dijeda")]
     Paused,
-    #[msg("Jaminan belum dikunci atau tidak mencukupi")]
+    #[msg("Bond is not locked or insufficient")]
     BondRequired,
-    #[msg("Saldo jaminan tidak mencukupi")]
+    #[msg("Bond balance is insufficient")]
     InsufficientBond,
-    #[msg("Tidak berwenang")]
+    #[msg("Unauthorized")]
     Unauthorized,
     #[msg("Perhitungan melampaui batas")]
     MathOverflow,
-    #[msg("Deal dibekukan oleh sengketa")]
+    #[msg("Deal is frozen by a dispute")]
     DealFrozen,
-    #[msg("Deal belum dibekukan")]
+    #[msg("Deal is not frozen")]
     DealNotFrozen,
-    #[msg("Deal sudah dibatalkan")]
+    #[msg("Deal is already cancelled")]
     DealCancelled,
-    #[msg("Deal sudah selesai")]
+    #[msg("Deal is already completed")]
     DealCompleted,
-    #[msg("Deal belum selesai")]
+    #[msg("Deal is not completed yet")]
     DealNotFinished,
-    #[msg("Dana melebihi jumlah yang dikunci")]
+    #[msg("Funds exceed the locked amount")]
     OverFunded,
     #[msg("Pelepasan melebihi saldo leg")]
     OverRelease,
-    #[msg("Alamat penerima fee tidak sesuai")]
+    #[msg("Fee recipient address does not match")]
     InvalidFeeDestination,
-    #[msg("Pembagian dana tidak tepat habis: sisa dana akan tersangkut di vault")]
+    #[msg("Fund split is not exact: the remainder would be stranded in the vault")]
     InexactSettlement,
 }
