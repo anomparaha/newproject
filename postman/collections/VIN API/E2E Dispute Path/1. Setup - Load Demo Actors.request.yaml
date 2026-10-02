@@ -1,0 +1,15 @@
+$kind: http-request
+name: '1. Setup - Load Demo Actors'
+order: 100
+method: GET
+url: '{{baseUrl}}/api/demo/actors'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('demo actors 200', () => pm.response.to.have.status(200));
+      const a = pm.response.json().actors || [];
+      const by = r => (a.find(x => x.role === r) || {}).id;
+      pm.collectionVariables.set('dspSellerId', by('seller'));
+      pm.collectionVariables.set('dspArbiterId', by('arbiter'));
+      pm.test('seller+arbiter captured', () => { pm.expect(pm.collectionVariables.get('dspSellerId')).to.be.a('string').and.not.empty; pm.expect(pm.collectionVariables.get('dspArbiterId')).to.be.a('string').and.not.empty; });

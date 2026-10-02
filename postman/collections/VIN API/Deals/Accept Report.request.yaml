@@ -1,0 +1,13 @@
+$kind: http-request
+name: Accept Report
+order: 4000
+method: POST
+url: '{{baseUrl}}/api/deals/:id/reports/:reportId/accept'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'
+  - key: reportId
+    value: '{{reportId}}'
+headers:
+  - key: x-actor-id
+    value: '{{buyerId}}'

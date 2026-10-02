@@ -1,0 +1,19 @@
+$kind: http-request
+name: Create Corridor
+order: 2000
+method: POST
+url: '{{baseUrl}}/api/corridors'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{curatorId}}'
+body:
+  type: json
+  content: |-
+    {
+      "originCountry": "US",
+      "destinationCountry": "ID",
+      "minVehiclePriceUsd": 5000,
+      "allowedCurrencies": ["USDC", "USD"]
+    }

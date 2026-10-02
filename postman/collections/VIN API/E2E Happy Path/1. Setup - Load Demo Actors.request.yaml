@@ -1,0 +1,21 @@
+$kind: http-request
+name: '1. Setup - Load Demo Actors'
+order: 100
+method: GET
+url: '{{baseUrl}}/api/demo/actors'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('demo actors 200', () => pm.response.to.have.status(200));
+      const a = pm.response.json().actors || [];
+      const by = r => (a.find(x => x.role === r) || {}).id;
+      const seller = a.find(x => x.role === 'seller') || {};
+      pm.collectionVariables.set('e2eSellerId', seller.id);
+      // Pick an inspector that is NOT affiliated with the chosen seller.
+      // The demo seed affiliates "Sahabat Motor" with the seller, so prefer
+      // an inspector whose displayName does not mention "affiliated".
+      const inspectors = a.filter(x => x.role === 'inspector');
+      const nonAffiliated = inspectors.find(x => !/affiliat/i.test(x.displayName || '')) || inspectors[0] || {};
+      pm.collectionVariables.set('e2eInspectorId', nonAffiliated.id);
+      pm.test('seller+inspector captured', () => { pm.expect(pm.collectionVariables.get('e2eSellerId')).to.be.a('string').and.not.empty; pm.expect(pm.collectionVariables.get('e2eInspectorId')).to.be.a('string').and.not.empty; });

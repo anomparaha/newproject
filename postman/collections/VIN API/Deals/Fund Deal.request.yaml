@@ -1,0 +1,11 @@
+$kind: http-request
+name: Fund Deal
+order: 2000
+method: POST
+url: '{{baseUrl}}/api/deals/:id/fund'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{buyerId}}'

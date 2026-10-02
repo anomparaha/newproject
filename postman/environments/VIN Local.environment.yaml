@@ -1,0 +1,6 @@
+name: VIN Local
+values:
+  - key: baseUrl
+    value: 'http://localhost:8080'
+    enabled: true
+    type: default

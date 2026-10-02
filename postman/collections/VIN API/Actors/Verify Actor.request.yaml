@@ -1,0 +1,20 @@
+$kind: http-request
+name: Verify Actor
+order: 5000
+method: POST
+url: '{{baseUrl}}/api/actors/:id/verify'
+pathVariables:
+  - key: id
+    value: '{{actorId}}'
+headers:
+  - key: x-actor-id
+    value: '{{curatorId}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "level": "business_verified",
+      "note": "Business documents validated by corridor curator."
+    }

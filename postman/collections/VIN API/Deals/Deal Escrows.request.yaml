@@ -1,0 +1,8 @@
+$kind: http-request
+name: Deal Escrows
+order: 11000
+method: GET
+url: '{{baseUrl}}/api/deals/:id/escrows'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'

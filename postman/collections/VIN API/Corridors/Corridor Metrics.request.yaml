@@ -1,0 +1,8 @@
+$kind: http-request
+name: Corridor Metrics
+order: 3000
+method: GET
+url: '{{baseUrl}}/api/corridors/:id/metrics'
+pathVariables:
+  - key: id
+    value: '{{corridorId}}'

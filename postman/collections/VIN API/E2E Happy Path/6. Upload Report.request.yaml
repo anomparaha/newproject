@@ -1,0 +1,40 @@
+$kind: http-request
+name: '6. Upload Report'
+order: 600
+method: POST
+url: '{{baseUrl}}/api/deals/:id/reports'
+pathVariables:
+  - key: id
+    value: '{{e2eDealId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{e2eInspectorId}}'
+body:
+  type: json
+  content: |-
+    {
+      "inspectorId": "{{e2eInspectorId}}",
+      "odometerKm": 20500,
+      "inspectedAt": "2026-10-02T10:00:00.000Z",
+      "reportHash": "{{sha256}}",
+      "dashboardPhotoHash": "{{sha256}}",
+      "conditionSummary": "No structural damage; wear consistent with the odometer. Full service history.",
+      "standardVersion": "vin-report-v1",
+      "checklist": {
+        "vin_matches_unit": true,
+        "dashboard_photo": true,
+        "odometer_documented": true,
+        "main_condition": true,
+        "date_and_location": true
+      }
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('report 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json();
+      pm.collectionVariables.set('e2eReportId', (b.report && b.report.id) || b.id);
+      pm.test('no anomaly', () => pm.expect(b.anomaly && b.anomaly.flagged).to.not.eql(true));

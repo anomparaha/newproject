@@ -1,0 +1,40 @@
+$kind: http-request
+name: '8. Upload Report (odometer rollback)'
+order: 800
+method: POST
+url: '{{baseUrl}}/api/deals/:id/reports'
+pathVariables:
+  - key: id
+    value: '{{dspDealId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{dspInspectorId}}'
+body:
+  type: json
+  content: |-
+    {
+      "inspectorId": "{{dspInspectorId}}",
+      "odometerKm": 45000,
+      "inspectedAt": "2026-10-02T10:00:00.000Z",
+      "reportHash": "{{sha256}}",
+      "dashboardPhotoHash": "{{sha256}}",
+      "conditionSummary": "Odometer reads 45,000 km, well below the platform record of 90,000 km. Documents do not explain the gap.",
+      "standardVersion": "vin-report-v1",
+      "checklist": {
+        "vin_matches_unit": true,
+        "dashboard_photo": true,
+        "odometer_documented": true,
+        "main_condition": true,
+        "date_and_location": true
+      }
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('report 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json();
+      pm.collectionVariables.set('dspReportId', (b.report && b.report.id) || b.id);
+      pm.test('odometer anomaly flagged', () => pm.expect(b.anomaly && b.anomaly.flagged).to.eql(true));

@@ -1,0 +1,24 @@
+$kind: http-request
+name: '2a. Register Inspector'
+order: 210
+method: POST
+url: '{{baseUrl}}/api/actors'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "role": "inspector",
+      "displayName": "E2E Fresh Inspector",
+      "email": "e2e.inspector.{{$timestamp}}@vin.demo",
+      "countryCode": "ID",
+      "city": "Surabaya"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('register inspector 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      pm.collectionVariables.set('e2eInspectorId', pm.response.json().actor.id);

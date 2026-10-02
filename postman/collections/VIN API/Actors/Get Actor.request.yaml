@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get Actor
+order: 3000
+method: GET
+url: '{{baseUrl}}/api/actors/:id'
+pathVariables:
+  - key: id
+    value: '{{actorId}}'

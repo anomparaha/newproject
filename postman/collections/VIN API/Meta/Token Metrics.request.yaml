@@ -1,0 +1,5 @@
+$kind: http-request
+name: Token Metrics
+order: 3000
+method: GET
+url: '{{baseUrl}}/api/metrics/token'

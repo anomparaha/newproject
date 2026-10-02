@@ -1,0 +1,32 @@
+$kind: http-request
+name: '5. Create Listing (high odometer)'
+order: 500
+method: POST
+url: '{{baseUrl}}/api/listings'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "vin": "DSP{{$timestamp}}X",
+      "sellerId": "{{dspSellerId}}",
+      "make": "Toyota",
+      "model": "Avanza",
+      "year": 2019,
+      "odometerKm": 90000,
+      "location": "Jakarta, Indonesia",
+      "priceAmount": "9000",
+      "priceCurrency": "USDC",
+      "shippingTerms": "FOB Jakarta; seller covers freight.",
+      "photoHashes": ["{{sha256}}"]
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('create listing 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json(); const l = b.listing || b;
+      pm.collectionVariables.set('dspListingId', l.id);
+      pm.collectionVariables.set('dspVin', l.vin);

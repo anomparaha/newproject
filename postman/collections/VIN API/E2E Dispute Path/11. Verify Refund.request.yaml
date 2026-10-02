@@ -1,0 +1,17 @@
+$kind: http-request
+name: '11. Verify Refund'
+order: 1100
+method: GET
+url: '{{baseUrl}}/api/deals/:id'
+pathVariables:
+  - key: id
+    value: '{{dspDealId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('verify 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json();
+      pm.test('deal cancelled', () => pm.expect(b.deal.state).to.eql('cancelled'));
+      const veh = (b.escrows || []).find(e => e.leg === 'vehicle');
+      pm.test('vehicle escrow refunded to buyer', () => pm.expect(veh && veh.status).to.eql('refunded'));

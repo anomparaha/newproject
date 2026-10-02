@@ -1,0 +1,24 @@
+$kind: http-request
+name: '2. Register Buyer'
+order: 200
+method: POST
+url: '{{baseUrl}}/api/actors'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "role": "buyer",
+      "displayName": "E2E Flow Buyer",
+      "email": "e2e.buyer.{{$timestamp}}@vin.demo",
+      "countryCode": "SG",
+      "city": "Singapore"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('register buyer 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      pm.collectionVariables.set('e2eBuyerId', pm.response.json().actor.id);

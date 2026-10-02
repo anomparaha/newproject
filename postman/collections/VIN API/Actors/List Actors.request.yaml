@@ -1,0 +1,12 @@
+$kind: http-request
+name: List Actors
+order: 2000
+method: GET
+url: '{{baseUrl}}/api/actors'
+queryParams:
+  - key: role
+    value: inspector
+    disabled: true
+  - key: country
+    value: US
+    disabled: true

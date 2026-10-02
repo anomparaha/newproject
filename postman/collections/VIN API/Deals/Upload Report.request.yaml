@@ -1,0 +1,32 @@
+$kind: http-request
+name: Upload Report
+order: 3000
+method: POST
+url: '{{baseUrl}}/api/deals/:id/reports'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{inspectorId}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "inspectorId": "{{inspectorId}}",
+      "odometerKm": 42060,
+      "inspectedAt": "2026-10-02T10:00:00.000Z",
+      "reportHash": "{{sha256}}",
+      "dashboardPhotoHash": "{{sha256}}",
+      "conditionSummary": "No structural damage. Minor cosmetic wear consistent with the stated mileage.",
+      "standardVersion": "v1",
+      "checklist": {
+        "vin_matches_unit": true,
+        "dashboard_photo": true,
+        "odometer_documented": true,
+        "main_condition": true,
+        "date_and_location": true
+      }
+    }

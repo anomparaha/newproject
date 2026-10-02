@@ -1,0 +1,33 @@
+$kind: http-request
+name: '4. Commit Deal'
+order: 400
+method: POST
+url: '{{baseUrl}}/api/listings/:id/deals'
+pathVariables:
+  - key: id
+    value: '{{e2eListingId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{e2eBuyerId}}'
+body:
+  type: json
+  content: |-
+    {
+      "buyerId": "{{e2eBuyerId}}",
+      "inspectorId": "{{e2eInspectorId}}",
+      "shippingPaidBy": "buyer",
+      "shippingAmount": "300",
+      "inspectionFeeAmount": "100",
+      "escrowCurrency": "USDC",
+      "inspectionDeadlineHours": 72,
+      "handoverTerms": "Release vehicle funds only after both parties confirm handover at the destination port."
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('commit deal 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json(); const d = b.deal || b;
+      pm.collectionVariables.set('e2eDealId', d.id);

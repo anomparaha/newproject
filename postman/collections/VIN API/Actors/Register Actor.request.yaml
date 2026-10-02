@@ -1,0 +1,18 @@
+$kind: http-request
+name: Register Actor
+order: 1000
+method: POST
+url: '{{baseUrl}}/api/actors'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "role": "seller",
+      "displayName": "Pacific Auto Sales",
+      "email": "sales@pacificauto.example",
+      "countryCode": "US",
+      "city": "Los Angeles"
+    }

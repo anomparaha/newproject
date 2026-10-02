@@ -1,0 +1,5 @@
+$kind: http-request
+name: List Inspectors
+order: 2000
+method: GET
+url: '{{baseUrl}}/api/inspectors'

@@ -1,0 +1,18 @@
+$kind: http-request
+name: List Listings
+order: 2000
+method: GET
+url: '{{baseUrl}}/api/listings'
+queryParams:
+  - key: status
+    value: listed
+    disabled: true
+  - key: vin
+    value: '{{vin}}'
+    disabled: true
+  - key: sellerId
+    value: '{{sellerId}}'
+    disabled: true
+  - key: corridorId
+    value: '{{corridorId}}'
+    disabled: true

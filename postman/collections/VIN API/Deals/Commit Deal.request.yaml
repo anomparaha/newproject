@@ -1,0 +1,24 @@
+$kind: http-request
+name: Commit Deal
+order: 1000
+method: POST
+url: '{{baseUrl}}/api/listings/:id/deals'
+pathVariables:
+  - key: id
+    value: '{{listingId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "buyerId": "{{buyerId}}",
+      "inspectorId": "{{inspectorId}}",
+      "shippingPaidBy": "buyer",
+      "shippingAmount": "800",
+      "inspectionFeeAmount": "150",
+      "escrowCurrency": "USDC",
+      "inspectionDeadlineHours": 72,
+      "handoverTerms": "Funds release to the seller only after both parties confirm handover at the destination port."
+    }

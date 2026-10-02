@@ -1,0 +1,21 @@
+$kind: http-request
+name: Confirm Handover
+order: 5000
+method: POST
+url: '{{baseUrl}}/api/deals/:id/handover'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{actorId}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "actorId": "{{actorId}}",
+      "evidenceHash": "{{sha256}}",
+      "method": "mutual_confirmation"
+    }

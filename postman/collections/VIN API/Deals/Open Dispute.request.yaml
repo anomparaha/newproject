@@ -1,0 +1,20 @@
+$kind: http-request
+name: Open Dispute
+order: 7000
+method: POST
+url: '{{baseUrl}}/api/deals/:id/disputes'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{actorId}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "openedBy": "{{actorId}}",
+      "reason": "The odometer reading is below the documented inspection baseline for this VIN."
+    }

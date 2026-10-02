@@ -1,0 +1,24 @@
+$kind: http-request
+name: '2b. Bond Inspector Capacity'
+order: 220
+method: POST
+url: '{{baseUrl}}/api/actors/:id/bonds'
+pathVariables:
+  - key: id
+    value: '{{e2eInspectorId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "amount": "500",
+      "currency": "USDC",
+      "purpose": "inspection_capacity"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('bond capacity 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));

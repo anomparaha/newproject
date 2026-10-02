@@ -1,0 +1,5 @@
+$kind: http-request
+name: List Notes
+order: 12000
+method: GET
+url: '{{baseUrl}}/api/notes'

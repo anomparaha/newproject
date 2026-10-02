@@ -1,0 +1,17 @@
+$kind: http-request
+name: '7. Fund Deal'
+order: 700
+method: POST
+url: '{{baseUrl}}/api/deals/:id/fund'
+pathVariables:
+  - key: id
+    value: '{{dspDealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{dspBuyerId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('fund 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      pm.test('state inspecting', () => pm.expect(pm.response.json().deal.state).to.eql('inspecting'));

@@ -1,0 +1,28 @@
+$kind: http-request
+name: '9. Open Dispute (buyer)'
+order: 900
+method: POST
+url: '{{baseUrl}}/api/deals/:id/disputes'
+pathVariables:
+  - key: id
+    value: '{{dspDealId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{dspBuyerId}}'
+body:
+  type: json
+  content: |-
+    {
+      "openedBy": "{{dspBuyerId}}",
+      "reason": "The odometer reading is below the documented baseline for this VIN; suspected rollback, requesting a refund."
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('open dispute 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json();
+      pm.collectionVariables.set('dspDisputeId', b.dispute.id);
+      pm.test('dispute is open', () => pm.expect(b.dispute.state).to.eql('open'));

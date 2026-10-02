@@ -1,0 +1,17 @@
+$kind: http-request
+name: '10. Release Vehicle'
+order: 1000
+method: POST
+url: '{{baseUrl}}/api/deals/:id/release-vehicle'
+pathVariables:
+  - key: id
+    value: '{{e2eDealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{e2eBuyerId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('release 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      pm.test('deal completed', () => pm.expect(pm.response.json().deal.state).to.eql('completed'));

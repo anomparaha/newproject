@@ -1,0 +1,8 @@
+$kind: http-request
+name: VIN Lookup
+order: 5000
+method: GET
+url: '{{baseUrl}}/api/vin/:vin'
+pathVariables:
+  - key: vin
+    value: '{{vin}}'

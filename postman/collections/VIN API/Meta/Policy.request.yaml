@@ -1,0 +1,5 @@
+$kind: http-request
+name: Policy
+order: 2000
+method: GET
+url: '{{baseUrl}}/api/meta/policy'

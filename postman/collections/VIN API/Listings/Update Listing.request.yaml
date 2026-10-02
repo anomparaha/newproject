@@ -1,0 +1,23 @@
+$kind: http-request
+name: Update Listing
+order: 4000
+method: PATCH
+url: '{{baseUrl}}/api/listings/:id'
+pathVariables:
+  - key: id
+    value: '{{listingId}}'
+headers:
+  - key: x-actor-id
+    value: '{{sellerId}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "priceAmount": "17500",
+      "shippingTerms": "CIF destination port; seller covers ocean freight.",
+      "location": "Long Beach, US",
+      "odometerKm": 42050,
+      "photoHashes": ["{{sha256}}"]
+    }

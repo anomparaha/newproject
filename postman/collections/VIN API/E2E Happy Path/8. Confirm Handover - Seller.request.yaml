@@ -1,0 +1,26 @@
+$kind: http-request
+name: '8. Confirm Handover - Seller'
+order: 800
+method: POST
+url: '{{baseUrl}}/api/deals/:id/handover'
+pathVariables:
+  - key: id
+    value: '{{e2eDealId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{e2eSellerId}}'
+body:
+  type: json
+  content: |-
+    {
+      "actorId": "{{e2eSellerId}}",
+      "evidenceHash": "{{sha256}}",
+      "method": "handover_location_confirmed"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('handover seller 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));

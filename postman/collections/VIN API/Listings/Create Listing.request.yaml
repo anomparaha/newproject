@@ -1,0 +1,28 @@
+$kind: http-request
+name: Create Listing
+order: 1000
+method: POST
+url: '{{baseUrl}}/api/listings'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "vin": "{{vin}}",
+      "sellerId": "{{sellerId}}",
+      "make": "Toyota",
+      "model": "Corolla",
+      "year": 2021,
+      "odometerKm": 42000,
+      "location": "Los Angeles, US",
+      "priceAmount": "18000",
+      "priceCurrency": "USD",
+      "shippingTerms": "FOB seller port; buyer covers ocean freight and import duties.",
+      "photoHashes": ["{{sha256}}"],
+      "bond": {
+        "amount": "500",
+        "currency": "USDC"
+      }
+    }

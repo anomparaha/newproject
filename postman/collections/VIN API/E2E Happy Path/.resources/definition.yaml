@@ -1,0 +1,3 @@
+$kind: collection
+name: E2E Happy Path
+description: 'End-to-end happy-path flow: load demo actors, register a fresh buyer, create a listing, then commit/fund/inspect/accept/handover/release a deal until it is completed.'

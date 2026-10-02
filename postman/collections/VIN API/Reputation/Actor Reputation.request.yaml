@@ -1,0 +1,8 @@
+$kind: http-request
+name: Actor Reputation
+order: 1000
+method: GET
+url: '{{baseUrl}}/api/reputation/:actorId'
+pathVariables:
+  - key: actorId
+    value: '{{actorId}}'

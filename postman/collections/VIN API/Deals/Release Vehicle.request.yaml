@@ -1,0 +1,11 @@
+$kind: http-request
+name: Release Vehicle
+order: 6000
+method: POST
+url: '{{baseUrl}}/api/deals/:id/release-vehicle'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{buyerId}}'

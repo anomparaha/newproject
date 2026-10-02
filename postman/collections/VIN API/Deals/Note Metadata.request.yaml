@@ -1,0 +1,8 @@
+$kind: http-request
+name: Note Metadata
+order: 13000
+method: GET
+url: '{{baseUrl}}/api/notes/:id/metadata'
+pathVariables:
+  - key: id
+    value: '{{noteId}}'

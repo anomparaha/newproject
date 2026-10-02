@@ -1,0 +1,30 @@
+$kind: http-request
+name: '10. Resolve Dispute - refund_buyer'
+order: 1000
+method: POST
+url: '{{baseUrl}}/api/disputes/:id/resolve'
+pathVariables:
+  - key: id
+    value: '{{dspDisputeId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{dspArbiterId}}'
+body:
+  type: json
+  content: |-
+    {
+      "arbiterId": "{{dspArbiterId}}",
+      "outcome": "refund_buyer",
+      "refundedAmount": "9000",
+      "arbiterNote": "Odometer anomaly confirmed and unexplained; vehicle funds refunded to the buyer and the deal cancelled."
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('resolve 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json();
+      pm.test('outcome refund_buyer', () => pm.expect(b.dispute.outcome).to.eql('refund_buyer'));
+      pm.test('refunded to buyer = 9000', () => pm.expect(String(b.breakdown.refundedAmount)).to.eql('9000'));

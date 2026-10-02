@@ -1,0 +1,5 @@
+$kind: http-request
+name: Demo Actors
+order: 4000
+method: GET
+url: '{{baseUrl}}/api/demo/actors'

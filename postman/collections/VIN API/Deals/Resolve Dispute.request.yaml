@@ -1,0 +1,22 @@
+$kind: http-request
+name: Resolve Dispute
+order: 8000
+method: POST
+url: '{{baseUrl}}/api/disputes/:id/resolve'
+pathVariables:
+  - key: id
+    value: '{{disputeId}}'
+headers:
+  - key: x-actor-id
+    value: '{{arbiterId}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "arbiterId": "{{arbiterId}}",
+      "outcome": "refund_buyer",
+      "refundedAmount": "150",
+      "arbiterNote": "Buyer refunded; inspection standard not met and odometer anomaly confirmed."
+    }

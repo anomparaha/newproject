@@ -1,0 +1,20 @@
+$kind: http-request
+name: Lock Bond
+order: 4000
+method: POST
+url: '{{baseUrl}}/api/actors/:id/bonds'
+pathVariables:
+  - key: id
+    value: '{{actorId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "amount": "500",
+      "currency": "USDC",
+      "purpose": "listing",
+      "listingId": "{{listingId}}"
+    }

@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get Deal
+order: 10000
+method: GET
+url: '{{baseUrl}}/api/deals/:id'
+pathVariables:
+  - key: id
+    value: '{{dealId}}'

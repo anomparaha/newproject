@@ -1,0 +1,8 @@
+$kind: http-request
+name: List Affiliations
+order: 7000
+method: GET
+url: '{{baseUrl}}/api/actors/:id/affiliations'
+pathVariables:
+  - key: id
+    value: '{{actorId}}'

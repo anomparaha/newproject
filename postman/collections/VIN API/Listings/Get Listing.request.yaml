@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get Listing
+order: 3000
+method: GET
+url: '{{baseUrl}}/api/listings/:id'
+pathVariables:
+  - key: id
+    value: '{{listingId}}'

@@ -1,0 +1,33 @@
+$kind: http-request
+name: '6. Commit Deal'
+order: 600
+method: POST
+url: '{{baseUrl}}/api/listings/:id/deals'
+pathVariables:
+  - key: id
+    value: '{{dspListingId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{dspBuyerId}}'
+body:
+  type: json
+  content: |-
+    {
+      "buyerId": "{{dspBuyerId}}",
+      "inspectorId": "{{dspInspectorId}}",
+      "shippingPaidBy": "seller",
+      "shippingAmount": "0",
+      "inspectionFeeAmount": "100",
+      "escrowCurrency": "USDC",
+      "inspectionDeadlineHours": 72,
+      "handoverTerms": "Release after the handover is confirmed at the destination."
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('commit deal 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json(); const d = b.deal || b;
+      pm.collectionVariables.set('dspDealId', d.id);
