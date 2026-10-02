@@ -174,7 +174,17 @@ Work breakdown, gates, and the mainnet checklist: **`docs/ROADMAP.md`**.
 - `docs/DEPLOYMENT.md` — MVP deployment, real-money readiness, and how to turn on the on-chain path.
 - `docs/LEGAL.md` — legal boundaries, compliance, and what must **not** be published.
 
-## 9. Warning
+## 9. Repo hygiene
+
+This repository has history and one shared branch (`arena/01a0fdf4-newproject`). To avoid losing it:
+
+- **Never re-run `git init`** or push a freshly initialised repo over this branch. That replaces the
+  whole history with a single root commit and every earlier commit becomes unreachable.
+- **Pull before you push.** If a push is rejected, pull and resolve - do not force-push.
+- Generated data (`.data/`, `node_modules/`, `.next/`) is gitignored; reset it with `npm run seed:reset`
+  instead of committing it.
+
+## 10. Warning
 
 This repository is a **product foundation**, not an investment promise. No token is sold, no price
 projection is made, and no return is promised to anyone. Before real money moves: a contract audit,

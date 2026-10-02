@@ -6,6 +6,8 @@ url: '{{baseUrl}}/api/listings'
 headers:
   - key: Content-Type
     value: application/json
+  - key: x-actor-id
+    value: '{{e2eSellerId}}'
 body:
   type: json
   content: |-
