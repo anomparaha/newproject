@@ -1,0 +1,26 @@
+{
+  "name": "vin-market",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VIN - pasar kendaraan lintas negara dengan escrow, inspeksi pihak ketiga, dan nota digital di Solana.",
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace @vin/shared",
+    "dev:api": "npm run dev --workspace @vin/api",
+    "dev:web": "npm run dev --workspace @vin/web",
+    "seed": "tsx services/api/src/seed.ts",
+    "seed:reset": "tsx services/api/src/seed.ts --reset",
+    "typecheck": "npm run typecheck --workspace @vin/shared && npm run typecheck --workspace @vin/api && npm run typecheck --workspace @vin/web",
+    "reset:db": "rm -f .data/vin.db*",
+    "test": "npx tsx --test packages/shared/tests/*.test.ts",
+    "smoke": "tsx services/api/src/smoke.ts",
+    "verify": "npm run build:shared && npm run typecheck && npm test && npm run seed:reset && npm run smoke"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

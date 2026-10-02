@@ -1,0 +1,24 @@
+[package]
+name = "vin-anchor"
+version = "0.1.0"
+description = "VIN escrow, jaminan, dan registri nota. Nota bukan surat kendaraan."
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "vin_anchor"
+
+[features]
+default = []
+# CPI ke Metaplex Core untuk mencetak NFT nota. Nonaktif secara default supaya
+# build awal hanya bergantung pada anchor-lang + anchor-spl.
+metaplex-core = ["dep:mpl-core"]
+
+[dependencies]
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
+anchor-spl = "0.30.1"
+mpl-core = { version = "0.7", optional = true }
+
+[dev-dependencies]
+solana-program-test = "1.18"
+solana-sdk = "1.18"

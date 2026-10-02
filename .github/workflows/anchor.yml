@@ -1,0 +1,58 @@
+name: Anchor (program Solana)
+
+# Terpisah dari CI Node karena membutuhkan toolchain Rust + Solana.
+# Jalankan manual lewat "Run workflow" sampai program benar-benar dipakai,
+# supaya pipeline utama tetap cepat dan merahnya jelas berasal dari mana.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'programs/**'
+      - 'Anchor.toml'
+      - '.github/workflows/anchor.yml'
+
+jobs:
+  build-and-test:
+    name: anchor build + anchor test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Pasang Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Pasang Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Pasang Anchor CLI
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install 0.30.1
+          avm use 0.30.1
+          anchor --version
+
+      - name: Build program
+        run: anchor build
+
+      - name: Jalankan uji Anchor
+        run: anchor test --skip-build
+
+      - name: Simpan IDL sebagai artefak
+        uses: actions/upload-artifact@v4
+        with:
+          name: vin-anchor-idl
+          path: target/idl/vin_anchor.json
+          if-no-files-found: warn

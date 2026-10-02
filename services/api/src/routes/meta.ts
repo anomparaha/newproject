@@ -1,0 +1,94 @@
+import { Hono } from 'hono';
+import { EVENT_META, EVENT_TYPES, TOKEN_UTILITY, vinScopeNotice } from '@vin/shared';
+import { BONDS, CAPACITY, DISCLAIMERS, FEES, HALT_THRESHOLDS, PUBLIC_METRICS, PUBLICATION_STAGES, TOKEN_METRICS_NOTE } from '../policy.js';
+import { all } from '../db.js';
+import type { AppContext } from '../context.js';
+
+export function metaRoutes(ctx: AppContext): Hono {
+  const app = new Hono();
+
+  app.get('/health', (c) =>
+    c.json({
+      status: 'ok',
+      service: 'vin-api',
+      stage: 'bukti',
+      escrowProvider: ctx.escrow.kind,
+      time: new Date().toISOString(),
+    }),
+  );
+
+  /** Semua kebijakan publik dalam satu tempat supaya bisa diaudit dan diuji. */
+  app.get('/meta/policy', (c) =>
+    c.json({
+      platform: 'VIN',
+      whatItIs:
+        'Pasar kendaraan lintas negara: listing terkunci, dana di escrow, laporan inspeksi menempel ke nomor rangka, ' +
+        'deal selesai dicatat sebagai bukti digital yang tidak bisa ditimpa.',
+      moneyRule: DISCLAIMERS.moneyRule,
+      disclaimers: DISCLAIMERS,
+      fees: FEES,
+      bonds: BONDS,
+      capacity: CAPACITY,
+      token: TOKEN_UTILITY,
+      tokenMetricsNote: TOKEN_METRICS_NOTE,
+      haltThresholds: HALT_THRESHOLDS,
+      stages: PUBLICATION_STAGES,
+      publicMetrics: PUBLIC_METRICS,
+      eventTypes: EVENT_TYPES.map((t) => ({ type: t, ...EVENT_META[t] })),
+      vinNotice: vinScopeNotice(),
+    }),
+  );
+
+  /** Jaminan yang terkunci: satu-satunya "metrik token" yang kami klaim. */
+  app.get('/metrics/token', (c) => {
+    const lockedBonds = all(
+      ctx.db,
+      `SELECT b.currency, b.amount, a.role FROM bonds b JOIN actors a ON a.id = b.actor_id WHERE b.state = 'locked'`,
+    );
+    const byCurrency = new Map<string, string>();
+    for (const row of lockedBonds) {
+      const currency = String(row.currency);
+      const current = Number(byCurrency.get(currency) ?? '0');
+      byCurrency.set(currency, String(current + Number(row.amount)));
+    }
+    const settled = all(
+      ctx.db,
+      `SELECT
+         SUM(CASE WHEN state = 'slashed' THEN 1 ELSE 0 END) AS slashed,
+         SUM(CASE WHEN state = 'returned' THEN 1 ELSE 0 END) AS returned
+       FROM bonds`,
+    )[0];
+    return c.json({
+      lockBonds: [...byCurrency.entries()].map(([currency, amount]) => ({ currency, amount })),
+      activeStakeholders: new Set(lockedBonds.map((r) => r.role)).size,
+      bondsSlashed: Number(settled?.slashed ?? 0),
+      bondsReturned: Number(settled?.returned ?? 0),
+      note: TOKEN_METRICS_NOTE,
+    });
+  });
+
+  /**
+   * Daftar aktor demo untuk memilih persona di antarmuka.
+   * Matikan dengan VIN_DEMO_MODE=false di produksi - di produksi identitas
+   * memakai Sign-In With Solana + attestation, bukan header x-actor-id.
+   */
+  app.get('/demo/actors', (c) => {
+    if (process.env.VIN_DEMO_MODE === 'false') {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Mode demo dimatikan' } }, 404);
+    }
+    const rows = all(ctx.db, 'SELECT * FROM actors ORDER BY role, created_at');
+    return c.json({
+      demoMode: true,
+      actors: rows.map((r) => ({
+        id: String(r.id),
+        role: String(r.role),
+        displayName: String(r.display_name),
+        countryCode: String(r.country_code),
+        verification: String(r.verification),
+      })),
+      warning: 'Endpoint ini hanya untuk demo. Produksi memakai Sign-In With Solana dan attestation identitas.',
+    });
+  });
+
+  return app;
+}

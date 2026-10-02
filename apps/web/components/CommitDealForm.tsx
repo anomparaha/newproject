@@ -1,0 +1,151 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { Listing } from '@vin/shared';
+import { usePersona } from './PersonaProvider';
+import { Notice } from './Chips';
+import { formatAmount } from '@/lib/format';
+import type { InspectorEntry } from '@/lib/api';
+
+export function CommitDealForm({ listing }: { listing: Listing }) {
+  const { actor } = usePersona();
+  const router = useRouter();
+  const [inspectors, setInspectors] = useState<InspectorEntry[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'safe' | 'danger'; text: string } | null>(null);
+  const [form, setForm] = useState({
+    inspectorId: '',
+    inspectionFeeAmount: '150',
+    escrowCurrency: 'USDC' as 'USDC' | 'IDR',
+    shippingPaidBy: 'buyer' as 'buyer' | 'seller',
+    shippingAmount: '1200',
+    inspectionDeadlineHours: 72,
+    handoverTerms: 'Serah di lokasi + bukti muat; konfirmasi kedua pihak',
+    fundNow: true,
+  });
+
+  useEffect(() => {
+    fetch('/api/inspectors?country=ID')
+      .then((r) => (r.ok ? r.json() : { inspectors: [] }))
+      .then((data: { inspectors: InspectorEntry[] }) => {
+        setInspectors(data.inspectors);
+        if (data.inspectors[0]) setForm((f) => ({ ...f, inspectorId: data.inspectors[0]!.actor.id }));
+      })
+      .catch(() => setInspectors([]));
+  }, []);
+
+  if (!actor || actor.role !== 'buyer') {
+    return (
+      <Notice tone="info" title="Pilih persona Pembeli untuk mengunci deal">
+        Pembeli memilih bengkel, mengunci harga, dan mendanai escrow.
+      </Notice>
+    );
+  }
+
+  async function submit() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/listings/${listing.id}/deals`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-actor-id': actor!.id },
+        body: JSON.stringify({
+          buyerId: actor!.id,
+          inspectorId: form.inspectorId,
+          shippingPaidBy: form.shippingPaidBy,
+          shippingAmount: form.shippingAmount,
+          inspectionFeeAmount: form.inspectionFeeAmount,
+          escrowCurrency: form.escrowCurrency,
+          inspectionDeadlineHours: Number(form.inspectionDeadlineHours),
+          handoverTerms: form.handoverTerms,
+        }),
+      });
+      const data = (await res.json()) as { deal?: { id: string }; error?: { message: string; details?: unknown } };
+      if (!res.ok || !data.deal) {
+        throw new Error(`${data.error?.message ?? `HTTP ${res.status}`}${data.error?.details ? ` (${JSON.stringify(data.error.details)})` : ''}`);
+      }
+      if (form.fundNow) {
+        const fundRes = await fetch(`/api/deals/${data.deal.id}/fund`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-actor-id': actor!.id },
+          body: JSON.stringify({ payerRef: actor!.id }),
+        });
+        if (!fundRes.ok) throw new Error('Deal terkunci, tetapi pendanaan escrow gagal. Coba danai dari halaman deal.');
+      }
+      setMsg({ tone: 'safe', text: 'Deal dikunci. Listing tidak bisa dijual ke pembeli kedua selama escrow aktif.' });
+      router.push(`/deals/${data.deal.id}`);
+    } catch (error) {
+      setMsg({ tone: 'danger', text: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-4">
+      <h3 className="text-sm font-medium">Kunci deal</h3>
+      <p className="mt-1 text-xs text-mist-400">
+        Harga kendaraan {formatAmount(listing.priceAmount, listing.priceCurrency)} masuk escrow kendaraan; biaya inspeksi masuk escrow terpisah.
+      </p>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label htmlFor="inspector">Bengkel inspeksi (dipilih pembeli)</label>
+          <select id="inspector" value={form.inspectorId} onChange={(e) => setForm({ ...form, inspectorId: e.target.value })}>
+            {inspectors.length === 0 ? <option value="">Belum ada bengkel terverifikasi</option> : null}
+            {inspectors.map((entry) => (
+              <option key={entry.actor.id} value={entry.actor.id}>
+                {entry.actor.displayName} — tepat waktu {entry.reputation?.onTimeReportRate !== null && entry.reputation?.onTimeReportRate !== undefined ? `${(entry.reputation.onTimeReportRate * 100).toFixed(0)}%` : 'n/a'}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="fee">Biaya inspeksi (USDC)</label>
+          <input id="fee" value={form.inspectionFeeAmount} onChange={(e) => setForm({ ...form, inspectionFeeAmount: e.target.value })} />
+        </div>
+        <div>
+          <label htmlFor="deadline">Batas waktu laporan (jam)</label>
+          <input
+            id="deadline"
+            inputMode="numeric"
+            value={form.inspectionDeadlineHours}
+            onChange={(e) => setForm({ ...form, inspectionDeadlineHours: Number(e.target.value.replace(/[^0-9]/g, '') || 0) })}
+          />
+        </div>
+        <div>
+          <label htmlFor="shippingBy">Ongkir ditanggung</label>
+          <select id="shippingBy" value={form.shippingPaidBy} onChange={(e) => setForm({ ...form, shippingPaidBy: e.target.value as 'buyer' | 'seller' })}>
+            <option value="buyer">Pembeli</option>
+            <option value="seller">Penjual</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="shippingAmount">Perkiraan ongkir</label>
+          <input id="shippingAmount" value={form.shippingAmount} onChange={(e) => setForm({ ...form, shippingAmount: e.target.value })} />
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor="terms">Syarat serah terima (dikunci di awal)</label>
+          <input id="terms" value={form.handoverTerms} onChange={(e) => setForm({ ...form, handoverTerms: e.target.value })} />
+        </div>
+      </div>
+
+      <label className="mt-3 flex items-center gap-2 text-xs normal-case text-mist-300">
+        <input type="checkbox" className="h-4 w-4" checked={form.fundNow} onChange={(e) => setForm({ ...form, fundNow: e.target.checked })} />
+        Danai escrow sekarang (simulasi penyedia berizin)
+      </label>
+
+      <div className="mt-3">
+        <button className="primary" disabled={busy || !form.inspectorId} onClick={submit}>
+          {busy ? 'Memproses…' : 'Kunci deal & danai escrow'}
+        </button>
+      </div>
+      {msg ? (
+        <div className="mt-3">
+          <Notice tone={msg.tone} title={msg.text} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
