@@ -20,9 +20,10 @@ Jujur di depan, supaya tidak ada klaim palsu:
 - **Alur penuh lolos uji integrasi**: listing → escrow → inspeksi → laporan → penerimaan pembeli →
   serah terima → pelepasan dana kendaraan → nota tercatat, plus satu kasus **anomali kilometer**
   yang berujung **sengketa** dan **jaminan terpotong** (`npm run seed:reset`).
-- **20 uji** (`npm test`): 11 uji aturan inti (aritmetika uang desimal, state machine, prasyarat
-  pelepasan dana, anomali odometer, potongan jaminan) + **9 uji properti** untuk model ledger escrow
-  (ribuan kombinasi acak: fus over-release, double refund, putusan tidak tepat habis, bypass pembekuan).
+- **22 uji** (`npm test`): 11 uji aturan inti (aritmetika uang desimal, state machine, prasyarat
+  pelepasan dana, anomali odometer, potongan jaminan) + **11 uji properti** untuk model ledger escrow
+  (ribuan kombinasi acak: fus over-release, double refund, putusan tidak tepat habis, bypass
+  pembekuan, dan deal wajib selesai sebelum nota boleh dicatat).
 - Frontend Next.js: dasbor, listing, konsol deal, halaman VIN, pasar inspeksi, koridor, kebijakan.
   Aksi tombol (danai escrow, unggah laporan, terima laporan, serah terima, lepas dana, sengketa,
   putusan arbiter) memanggil API sungguhan.
@@ -156,6 +157,8 @@ Rincian pekerjaan, gate, dan checklist mainnet: **`docs/ROADMAP.md`**.
 - `docs/TECH_STACK.md` — pilihan teknologi + jawaban Rust/Go.
 - `docs/API.md` — referensi endpoint.
 - `docs/ROADMAP.md` — tahapan, gate, checklist produksi & mainnet.
+- `docs/FLOW.md` — **alur smart contract langkah demi langkah**: siapa menandatangani apa, diagram
+  jalur bahagia & sengketa, dan apa yang dijaga program vs tidak.
 - `docs/PROGRAM.md` — referensi smart contract: akun, instruksi, invarian, temuan review, yang belum ada.
 - `docs/DEPLOYMENT.md` — deploy MVP, kesiapan dana nyata, dan cara menghidupkan jalur on-chain.
 - `docs/LEGAL.md` — batas hukum, kepatuhan, dan apa yang **tidak boleh** dipublikasikan.

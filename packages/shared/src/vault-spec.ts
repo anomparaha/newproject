@@ -150,6 +150,12 @@ export function releaseLeg(state: VaultState, leg: Leg, amount: bigint, recipien
   const key = leg === LEG.vehicle ? 'vehicle' : 'inspection';
   state.released[key] += amount;
   credit(state, recipient, amount);
+
+  // Deal SELESAI ketika kedua leg terlepas penuh -> inilah yang membuka
+  // pencatatan nota (`record_note` mensyaratkan completed || cancelled).
+  if (state.released.vehicle === state.locked.vehicle && state.released.inspection === state.locked.inspection) {
+    state.completed = true;
+  }
 }
 
 /** Pengembalian dana satu leg ke pembeli. Padanan `refund_leg`. */
@@ -164,6 +170,11 @@ export function refundLeg(state: VaultState, leg: Leg): void {
   if (amount <= 0n) throw new VaultError('ZeroAmount');
   state.released[key] += amount;
   credit(state, state.buyer, amount);
+
+  // Kedua leg sudah kembali ke pembeli -> deal ditutup sebagai dibatalkan.
+  if (state.released.vehicle === state.locked.vehicle && state.released.inspection === state.locked.inspection) {
+    state.cancelled = true;
+  }
 }
 
 /**
@@ -246,6 +257,14 @@ export function slashBondToDisputeFund(
 export function lockBond(state: VaultState, actor: string, amount: bigint): void {
   if (amount <= 0n) throw new VaultError('ZeroAmount');
   state.bonds[actor] = (state.bonds[actor] ?? 0n) + amount;
+}
+
+/**
+ * Apakah nota boleh dicatat? Padanan `require!(deal.completed || deal.cancelled)`
+ * di instruksi `record_note`.
+ */
+export function canRecordNote(state: VaultState): boolean {
+  return state.completed || state.cancelled;
 }
 
 /** Uang konservatif: total saldo semua pihak harus selalu nol (double-entry). */

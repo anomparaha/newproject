@@ -83,7 +83,9 @@ describe('vin-anchor', () => {
     feeToken = await createAccount(provider.connection, buyer, usdcMint, feeTreasury.publicKey);
 
     await mintTo(provider.connection, buyer, usdcMint, buyerToken, buyer, 100_000_000_000n);
-    await mintTo(provider.connection, buyer, usdcMint, inspectorToken, buyer, 0n);
+    // Bengkel butuh saldo sendiri untuk mengunci jaminan (SPL Token memeriksa
+    // owner token account, jadi jaminan tidak bisa dibayar dari saldo pembeli).
+    await mintTo(provider.connection, buyer, usdcMint, inspectorToken, buyer, 1_000_000_000n);
 
     await program.methods
       .initializeConfig(arbiter.publicKey, relayer.publicKey, feeTreasury.publicKey, 100, 500)
@@ -129,7 +131,7 @@ describe('vin-anchor', () => {
       .accounts({
         bonder: inspector.publicKey,
         actor: actorPda(inspector.publicKey),
-        bonderToken: buyerToken, // untuk uji: saldo uji ada di pembeli
+        bonderToken: inspectorToken, // milik bengkel: SPL Token memeriksa owner
         bondVault: bondVaultPda(actorPda(inspector.publicKey)),
         tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
       })
@@ -328,7 +330,108 @@ describe('vin-anchor', () => {
     assert.equal((await getAccount(provider.connection, feeToken)).amount, 0n);
   });
 
-  it('10. nota: hanya setelah deal ditutup, dan tidak bisa ditimpa', async () => {
+  it('10. JALUR BAHAGIA: kedua leg tuntas -> deal completed -> nota boleh dicatat', async () => {
+    // Regresi temuan alur: sebelumnya `release_leg` tidak pernah menandai deal
+    // `completed`, sehingga pada jalur bahagia nota TIDAK PERNAH bisa dicatat.
+    const buyer2 = Keypair.generate();
+    const sig = await provider.connection.requestAirdrop(buyer2.publicKey, 2 * LAMPORTS_PER_SOL);
+    await provider.connection.confirmTransaction(sig);
+    const buyer2Token = await createAccount(provider.connection, buyer2, usdcMint, buyer2.publicKey);
+    await mintTo(provider.connection, buyer2, usdcMint, buyer2Token, buyer2, 100_000_000_000n);
+
+    // Jaminan bengkel dikunci ulang (habis dipotong pada uji 9).
+    await program.methods
+      .lockBond(new anchor.BN(BOND_AMOUNT.toString()), 1)
+      .accounts({
+        bonder: inspector.publicKey,
+        actor: actorPda(inspector.publicKey),
+        bonderToken: inspectorToken,
+        bondVault: bondVaultPda(actorPda(inspector.publicKey)),
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      })
+      .signers([inspector])
+      .rpc();
+
+    const deal2 = dealPda(buyer2.publicKey);
+    await program.methods
+      .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
+      .accounts({
+        buyer: buyer2.publicKey,
+        seller: seller.publicKey,
+        inspector: inspector.publicKey,
+        deal: deal2,
+        vehicleVault: vaultPda(deal2, LEG_VEHICLE),
+        inspectionVault: vaultPda(deal2, LEG_INSPECTION),
+        usdcMint,
+      })
+      .signers([buyer2])
+      .rpc();
+
+    for (const leg of [LEG_VEHICLE, LEG_INSPECTION]) {
+      const amount = leg === LEG_VEHICLE ? VEHICLE_AMOUNT : INSPECTION_AMOUNT;
+      await program.methods
+        .fundLeg(leg, new anchor.BN(amount.toString()))
+        .accounts({
+          buyer: buyer2.publicKey,
+          deal: deal2,
+          vehicleVault: vaultPda(deal2, LEG_VEHICLE),
+          inspectionVault: vaultPda(deal2, LEG_INSPECTION),
+          buyerToken: buyer2Token,
+        })
+        .signers([buyer2])
+        .rpc();
+    }
+
+    // Dana inspeksi cair setelah laporan (off-chain) diverifikasi relayer.
+    await program.methods
+      .releaseLeg(LEG_INSPECTION, new anchor.BN(INSPECTION_AMOUNT.toString()), hash(81), new anchor.BN(0))
+      .accounts({
+        relayer: relayer.publicKey,
+        deal: deal2,
+        vehicleVault: vaultPda(deal2, LEG_VEHICLE),
+        inspectionVault: vaultPda(deal2, LEG_INSPECTION),
+        sellerToken,
+        inspectorToken,
+        feeDestination: feeToken,
+      })
+      .signers([relayer])
+      .rpc();
+
+    // Setelah satu leg saja, deal BELUM selesai.
+    let state = await program.account.dealAccount.fetch(deal2);
+    assert.equal(state.completed, false, 'satu leg belum menutup deal');
+
+    // Dana kendaraan cair setelah syarat serah terima terpenuhi (off-chain).
+    await program.methods
+      .releaseLeg(LEG_VEHICLE, new anchor.BN(VEHICLE_AMOUNT.toString()), hash(82), new anchor.BN(0))
+      .accounts({
+        relayer: relayer.publicKey,
+        deal: deal2,
+        vehicleVault: vaultPda(deal2, LEG_VEHICLE),
+        inspectionVault: vaultPda(deal2, LEG_INSPECTION),
+        sellerToken,
+        inspectorToken,
+        feeDestination: feeToken,
+      })
+      .signers([relayer])
+      .rpc();
+
+    state = await program.account.dealAccount.fetch(deal2);
+    assert.equal(state.completed, true, 'kedua leg tuntas -> deal harus completed');
+
+    // Dan sekarang nota boleh dicatat.
+    await program.methods
+      .recordNote(buyer2.publicKey, new anchor.BN(1), hash(83), PublicKey.default)
+      .accounts({ relayer: relayer.publicKey, deal: deal2, note: notePda(deal2, 1n) })
+      .signers([relayer])
+      .rpc();
+
+    const note = await program.account.noteAccount.fetch(notePda(deal2, 1n));
+    assert.equal(note.owner.toBase58(), buyer2.publicKey.toBase58());
+    assert.equal(Buffer.from(note.evidenceRoot).toString('hex'), Buffer.from(hash(83)).toString('hex'));
+  });
+
+  it('11. nota: hanya setelah deal ditutup, dan tidak bisa ditimpa', async () => {
     await program.methods
       .recordNote(buyer.publicKey, new anchor.BN(1), hash(61), PublicKey.default)
       .accounts({ relayer: relayer.publicKey, deal, note: notePda(deal, 1n) })

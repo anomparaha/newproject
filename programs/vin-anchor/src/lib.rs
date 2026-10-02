@@ -365,6 +365,16 @@ pub mod vin_anchor {
             }
         }
 
+        // Deal SELESAI ketika kedua leg sudah terlepas penuh. Bendera inilah yang
+        // membuka `record_note`; tanpa langkah ini nota tidak akan pernah bisa
+        // dicatat on-chain dan alur bahagia berhenti di tengah jalan.
+        if deal.vehicle_released_amount == deal.vehicle_amount
+            && deal.inspection_released_amount == deal.inspection_amount
+        {
+            deal.completed = true;
+            emit!(DealCompleted { deal: deal.key() });
+        }
+
         emit!(LegReleased {
             deal: deal.key(),
             leg,
@@ -421,6 +431,15 @@ pub mod vin_anchor {
             LEG_VEHICLE => deal.vehicle_released_amount = deal.vehicle_amount,
             _ => deal.inspection_released_amount = deal.inspection_amount,
         }
+
+        // Bila kedua leg sudah kembali ke pembeli, deal ditutup sebagai dibatalkan.
+        if deal.vehicle_released_amount == deal.vehicle_amount
+            && deal.inspection_released_amount == deal.inspection_amount
+        {
+            deal.cancelled = true;
+            emit!(DealCancelledEvent { deal: deal.key() });
+        }
+
         emit!(LegRefunded {
             deal: deal.key(),
             leg,
@@ -1059,6 +1078,16 @@ pub struct LegFunded {
 pub struct DealFrozenEvent {
     pub deal: Pubkey,
     pub reason_hash: [u8; 32],
+}
+
+#[event]
+pub struct DealCompleted {
+    pub deal: Pubkey,
+}
+
+#[event]
+pub struct DealCancelledEvent {
+    pub deal: Pubkey,
 }
 
 #[event]

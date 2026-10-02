@@ -10,6 +10,9 @@ Referensi smart contract VIN: apa yang sudah dibuat, apa yang dijaga, dan apa ya
 
 ---
 
+> **Alur langkah demi langkah** (siapa memanggil apa, urutan, penjagaan tiap langkah, dan apa yang
+> tidak dijaga program): **`docs/FLOW.md`**.
+
 ## 1. Ringkas
 
 | | |
@@ -20,7 +23,7 @@ Referensi smart contract VIN: apa yang sudah dibuat, apa yang dijaga, dan apa ya
 | Akun state | `Config`, `ActorAccount`, `DealAccount`, `NoteAccount` |
 | Instruksi | 14 (lihat §3) |
 | Dependensi opsional | `mpl-core` untuk mencetak NFT nota langsung dari program (fitur `metaplex-core`, nonaktif default) |
-| Uji siap-jalan | `programs/vin-anchor/tests/vin_anchor.ts` — 10 kasus, termasuk 1 uji regresi |
+| Uji siap-jalan | `programs/vin-anchor/tests/vin_anchor.ts` — 11 kasus, termasuk 2 uji regresi |
 | CI | `.github/workflows/anchor.yml` (Rust + Solana CLI + Anchor, `anchor build`, `anchor test`) |
 
 ## 2. Akun dan PDA
@@ -77,7 +80,7 @@ memakai angka dan skenario yang sama supaya perbedaannya langsung terlihat.
 
 ```bash
 # Aturan (jalan sekarang, tanpa toolchain Solana)
-npm test        # 20 uji: 11 aturan inti + 9 uji properti/skenario ledger
+npm test        # 22 uji: 11 aturan inti + 11 uji properti/skenario ledger
 
 # Implementasi (butuh toolchain Solana)
 cd programs/vin-anchor && anchor build && anchor test

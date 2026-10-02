@@ -17,6 +17,7 @@ import {
   DECISION,
   LEG,
   VaultError,
+  canRecordNote,
   createVaultState,
   freezeDeal,
   ledgerSumsToZero,
@@ -208,6 +209,41 @@ test('invarian 7: fee dibatasi bps dan pembukuan tetap seimbang', () => {
   );
 });
 
+test('invarian 8: deal baru boleh mencatat nota setelah KEDUA leg tuntas', () => {
+  fc.assert(
+    fc.property(amountArb, amountArb, (vehicle, inspection) => {
+      const state = fresh(vehicle, inspection);
+      assert.equal(canRecordNote(state), false, 'nota tidak boleh dicatat sebelum deal ditutup');
+
+      releaseLeg(state, LEG.inspection, inspection, ACTORS.inspector);
+      assert.equal(canRecordNote(state), false, 'satu leg saja belum menutup deal');
+
+      releaseLeg(state, LEG.vehicle, vehicle, ACTORS.seller);
+      assert.equal(state.completed, true, 'deal harus selesai saat kedua leg tuntas');
+      assert.equal(canRecordNote(state), true, 'nota harus bisa dicatat setelah deal selesai');
+
+      // Deal yang sudah selesai tidak bisa dilepas lagi.
+      assert.throws(() => releaseLeg(state, LEG.vehicle, vehicle, ACTORS.seller), /DealCompleted|OverRelease/);
+    }),
+    { numRuns: 300 },
+  );
+});
+
+test('invarian 9: refund KEDUA leg menutup deal sebagai dibatalkan dan mengizinkan nota', () => {
+  fc.assert(
+    fc.property(amountArb, amountArb, (vehicle, inspection) => {
+      const state = fresh(vehicle, inspection);
+      refundLeg(state, LEG.vehicle);
+      assert.equal(state.cancelled, false);
+      refundLeg(state, LEG.inspection);
+      assert.equal(state.cancelled, true);
+      assert.equal(canRecordNote(state), true);
+      assert.equal(state.balances.vault, 0n);
+    }),
+    { numRuns: 300 },
+  );
+});
+
 test('contoh nyata: alur deal lengkap tetap seimbang dari awal sampai nota', () => {
   const state = fresh(45_000_000_000n, 150_000_000n); // 45.000 USDC + 150 USDC
   releaseLeg(state, LEG.inspection, 150_000_000n, ACTORS.inspector);
@@ -217,5 +253,7 @@ test('contoh nyata: alur deal lengkap tetap seimbang dari awal sampai nota', () 
   assert.equal(remaining(state, LEG.inspection), 0n);
   assert.equal(state.balances[ACTORS.seller], 45_000_000_000n);
   assert.equal(state.balances[ACTORS.inspector], 150_000_000n);
+  assert.equal(state.completed, true);
+  assert.equal(canRecordNote(state), true, 'nota boleh dicatat setelah deal selesai');
   assert.ok(ledgerSumsToZero(state));
 });
