@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { zCreateListing, vinScopeNotice, type EventPayload } from '@vin/shared';
 import { all, get, json, newId, nowIso, run } from '../db.js';
 import { actorIdFromRequest, type AppContext } from '../context.js';
-import { appendEvent, eventsForVin, latestOdometer } from '../events.js';
+import { appendEvent, eventsForVin, latestOdometer, maxOdometer } from '../events.js';
 import { serializeActor, serializeBond, serializeListing, serializeNote, serializeReport } from '../serialize.js';
 import { BONDS, CANDIDATE_CORRIDORS, PILOT_CORRIDOR } from '../policy.js';
 
@@ -21,7 +21,7 @@ export function listingRoutes(ctx: AppContext): Hono {
     if (seller.role !== 'seller') {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only a seller/dealer account may create a listing' } }, 403);
     }
-    if (callerId && callerId !== input.sellerId) {
+    if (!callerId || callerId !== input.sellerId) {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only the account owner may create a listing in their own name' } }, 403);
     }
 
@@ -119,11 +119,43 @@ export function listingRoutes(ctx: AppContext): Hono {
       actorRole: 'seller',
     });
 
+    // Re-listing a VIN below its highest recorded reading is allowed, but it is
+    // never silent: the warning joins the VIN chain and the buyer has to
+    // acknowledge it before any funds move.
+    const highest = maxOdometer(ctx.db, input.vin);
+    const odometerWarning =
+      typeof input.odometerKm === 'number' && highest && input.odometerKm < highest.km
+        ? appendEvent(ctx.db, {
+            vin: input.vin,
+            type: 'odometer_anomaly',
+            dealId: null,
+            payload: {
+              odometerKm: input.odometerKm,
+              anomaly: {
+                previousOdometerKm: highest.km,
+                previousEventId: highest.eventId,
+                deltaKm: input.odometerKm - highest.km,
+              },
+            },
+            actorId: input.sellerId,
+            actorRole: 'seller',
+          })
+        : null;
+
     return c.json(
       {
         listing: serializeListing(get(ctx.db, 'SELECT * FROM listings WHERE id = ?', [id])!),
         bond: bondRow ? serializeBond(bondRow) : null,
         event,
+        odometerWarning: odometerWarning
+          ? {
+              flagged: true,
+              message:
+                'This listing reads below the highest odometer record on this VIN. It is a warning, not a rejection, and the buyer must see it before funds release.',
+              previousOdometerKm: highest ? highest.km : null,
+            }
+          : { flagged: false },
+        warningEvent: odometerWarning,
         note: 'This is not a completion receipt yet. Its status is listed.',
       },
       201,

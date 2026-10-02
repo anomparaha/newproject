@@ -21,7 +21,7 @@ import {
 } from '@vin/shared';
 import { all, get, json, newId, nowIso, run } from '../db.js';
 import { actorIdFromRequest, demoBackdate, type AppContext } from '../context.js';
-import { appendEvent, eventsForDeal, latestOdometer } from '../events.js';
+import { appendEvent, eventsForDeal, eventsForVin, maxOdometer } from '../events.js';
 import { serializeActor, serializeDeal, serializeDispute, serializeNote, serializeReport } from '../serialize.js';
 import { FEES } from '../policy.js';
 
@@ -317,7 +317,9 @@ export function dealRoutes(ctx: AppContext): Hono {
     }
 
     const vin = String(deal.vin);
-    const previous = latestOdometer(db, vin);
+    // Baseline = the highest reading ever recorded on this VIN, never the latest
+    // one. A low report must not reset the comparison point.
+    const previous = maxOdometer(db, vin);
     const previousKm = previous ? previous.km : null;
     const anomaly = odometerIsAnomaly(input.odometerKm, previousKm);
 
@@ -419,8 +421,10 @@ export function dealRoutes(ctx: AppContext): Hono {
     if (!buyerId || buyerId !== String(deal.buyer_id)) {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only the buyer may accept the report' } }, 403);
     }
-    // An odometer anomaly must be seen before funds release.
-    const anomalies = eventsForDeal(db, dealId).filter((e) => e.type === 'odometer_anomaly');
+    // An odometer anomaly must be seen before funds release. This covers the
+    // report for this deal AND warnings raised earlier on the same VIN (for
+    // example a re-listing below the highest recorded reading).
+    const anomalies = eventsForVin(db, String(deal.vin)).filter((e) => e.type === 'odometer_anomaly');
     const acknowledged = (body as { acknowledgeAnomaly?: boolean }).acknowledgeAnomaly === true;
     if (anomalies.length > 0 && !acknowledged) {
       return c.json(

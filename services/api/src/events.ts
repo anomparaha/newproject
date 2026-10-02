@@ -110,8 +110,9 @@ export function eventsByType(db: DatabaseSync, vin: string, type: EventType): Vi
 }
 
 /**
- * Odometer anomaly: when a reading is lower than the latest one on the same VIN,
- * the system flags an anomaly - it never rejects automatically.
+ * The most recent odometer reading on this VIN, for display only.
+ *
+ * This is deliberately NOT the anomaly baseline. See `maxOdometer`.
  */
 export function latestOdometer(db: DatabaseSync, vin: string): { km: number; eventId: string } | null {
   const rows = all(
@@ -126,6 +127,32 @@ export function latestOdometer(db: DatabaseSync, vin: string): { km: number; eve
     }
   }
   return null;
+}
+
+/**
+ * The anomaly baseline: the HIGHEST reading ever recorded on this VIN.
+ *
+ * Using the latest reading instead would let one low report reset the baseline,
+ * so the next low reading would compare clean. The highest reading can only
+ * grow, which is what makes an odometer rollback impossible to walk backwards.
+ *
+ * Readings come from `listing_created` and `report_uploaded` events - the only
+ * two events that carry `odometerKm`.
+ */
+export function maxOdometer(db: DatabaseSync, vin: string): { km: number; eventId: string } | null {
+  const rows = all(
+    db,
+    `SELECT id, payload FROM events WHERE vin = ? AND type IN ('report_uploaded','listing_created') ORDER BY seq ASC`,
+    [vin],
+  );
+  let highest: { km: number; eventId: string } | null = null;
+  for (const row of rows) {
+    const payload = json<EventPayload>(row.payload as string, {});
+    if (typeof payload.odometerKm === 'number' && (highest === null || payload.odometerKm > highest.km)) {
+      highest = { km: payload.odometerKm, eventId: String(row.id) };
+    }
+  }
+  return highest;
 }
 
 export function timelineSummary(db: DatabaseSync, vin: string) {

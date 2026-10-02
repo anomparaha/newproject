@@ -167,7 +167,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
     photoHashes: [hash(1), hash(2), hash(3)],
     bond: { amount: '50', currency: 'USDC' },
-  });
+  }, seller.actor.id);
 
   const listing2 = await call<{ listing: { id: string } }>(ctx, 'POST', '/api/listings', {
     vin: 'JTMHV05J204098765',
@@ -182,7 +182,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
     photoHashes: [hash(4), hash(5)],
     bond: { amount: '50', currency: 'USDC' },
-  });
+  }, seller.actor.id);
 
   const listing3 = await call<{ listing: { id: string } }>(ctx, 'POST', '/api/listings', {
     vin: 'MRHRU5850LP123456',
@@ -196,7 +196,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     priceCurrency: 'USD',
     shippingTerms: 'FOB Surabaya',
     photoHashes: [hash(6)],
-  });
+  }, seller.actor.id);
 
   console.log(`[seed] 3 listings created. Below the corridor threshold = no bond (${listing3.listing.id}).`);
 

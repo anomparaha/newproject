@@ -30,7 +30,7 @@ function facts(event: VinEvent): Array<[string, string]> {
       break;
     case 'odometer_anomaly':
       if (p.anomaly) {
-        rows.push(['Previous reading', `${p.anomaly.previousOdometerKm.toLocaleString('en-US')} km`]);
+        rows.push(['Highest recorded', `${p.anomaly.previousOdometerKm.toLocaleString('en-US')} km`]);
         rows.push(['Current report', `${(p.odometerKm ?? 0).toLocaleString('en-US')} km`]);
         rows.push(['Difference', `${p.anomaly.deltaKm.toLocaleString('en-US')} km`]);
       }

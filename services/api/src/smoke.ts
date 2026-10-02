@@ -192,6 +192,143 @@ async function runChecks(base: string): Promise<void> {
       typeof metadata.properties?.vin_notice === 'string' && metadata.properties.vin_notice.includes('not a title'),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Regression: the odometer baseline is the HIGHEST reading ever recorded on a
+  // VIN, never the latest one. One low report must not reset the comparison
+  // point, and a re-listing below the record must raise a warning instead of
+  // hiding the next anomaly.
+  // ---------------------------------------------------------------------------
+  const demo = await fetch(`${base}/api/demo/actors`).then((r) => r.json() as Promise<Record<string, any>>);
+  const seller = demo.actors?.find((a: { role: string }) => a.role === 'seller');
+  const buyer = demo.actors?.find((a: { role: string }) => a.role === 'buyer');
+  const inspectorList = await fetch(`${base}/api/inspectors?country=ID`).then((r) => r.json() as Promise<Record<string, any>>);
+  const workshop =
+    (inspectorList.inspectors ?? []).find((i: { actor: { displayName: string } }) => !i.actor.displayName.includes('Sahabat'))?.actor ??
+    inspectorList.inspectors?.[0]?.actor;
+
+  check('a seller, a buyer, and a workshop exist for the odometer regression', Boolean(seller && buyer && workshop), 'run npm run seed:reset');
+
+  if (seller && buyer && workshop) {
+    const hex = (n: number) => n.toString(16).padStart(64, '0');
+    const json = { 'content-type': 'application/json' };
+
+    const post = (path: string, body: unknown, actorId: string) =>
+      fetch(`${base}${path}`, { method: 'POST', headers: { ...json, 'x-actor-id': actorId }, body: JSON.stringify(body) });
+
+    const createListing = async (vin: string, odometerKm: number, salt: number) => {
+      const res = await post('/api/listings', {
+        vin,
+        sellerId: seller.id,
+        make: 'Toyota',
+        model: 'Regression Fixture',
+        year: 2020,
+        odometerKm,
+        location: 'Jakarta, Indonesia',
+        priceAmount: '8000',
+        priceCurrency: 'USDC',
+        shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
+        photoHashes: [hex(200 + salt)],
+      }, seller.id);
+      return { status: res.status, body: (await res.json()) as Record<string, any> };
+    };
+
+    const openDeal = async (listingId: string) => {
+      const res = await post(`/api/listings/${listingId}/deals`, {
+        buyerId: buyer.id,
+        inspectorId: workshop.id,
+        shippingPaidBy: 'buyer',
+        shippingAmount: '100',
+        inspectionFeeAmount: '100',
+        escrowCurrency: 'USDC',
+        inspectionDeadlineHours: 48,
+        handoverTerms: 'Handover at the location; confirmation by both parties',
+      }, buyer.id);
+      return (await res.json()) as Record<string, any>;
+    };
+
+    const uploadReport = async (dealId: string, odometerKm: number, salt: number) => {
+      const res = await post(`/api/deals/${dealId}/reports`, {
+        inspectorId: workshop.id,
+        odometerKm,
+        inspectedAt: new Date().toISOString(),
+        reportHash: hex(210 + salt),
+        dashboardPhotoHash: hex(230 + salt),
+        conditionSummary: 'Regression fixture for the odometer baseline.',
+        standardVersion: 'vin-report-v1',
+        checklist: {
+          vin_matches_unit: true,
+          dashboard_photo: true,
+          odometer_documented: true,
+          main_condition: true,
+          date_and_location: true,
+        },
+      }, workshop.id);
+      return (await res.json()) as Record<string, any>;
+    };
+
+    // A listing cannot be created without an acting seller.
+    const anonymous = await fetch(`${base}/api/listings`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({
+        vin: 'ODOSMOKEANON26',
+        sellerId: seller.id,
+        make: 'Toyota',
+        model: 'Regression Fixture',
+        year: 2020,
+        location: 'Jakarta, Indonesia',
+        priceAmount: '8000',
+        priceCurrency: 'USDC',
+        shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
+        photoHashes: [hex(250)],
+      }),
+    });
+    check('a listing cannot be created without an acting seller', anonymous.status === 403, `status=${anonymous.status}`);
+
+    // --- Control: a single listing at 90,000 km, reported at 60,000 km. ---
+    const control = await createListing('ODOSMOKECTRL26', 90000, 1);
+    check('the control listing is created', control.status === 201, `status=${control.status}`);
+    if (control.status === 201) {
+      const deal = await openDeal(String(control.body.listing.id));
+      const dealId = deal.deal?.id;
+      if (dealId) {
+        await post(`/api/deals/${dealId}/fund`, {}, buyer.id);
+        const report = await uploadReport(String(dealId), 60000, 1);
+        check('a reading below the listing odometer is flagged as an anomaly', report.anomaly?.flagged === true, JSON.stringify(report.anomaly));
+      } else {
+        check('the control deal is created', false, JSON.stringify(deal));
+      }
+    }
+
+    // --- Regression: the same VIN re-listed at 50,000 km after a 90,000 km record. ---
+    const first = await createListing('ODOSMOKERST26', 90000, 2);
+    const relist = await createListing('ODOSMOKERST26', 50000, 3);
+    check('a re-listing below the highest record is accepted with a warning', relist.body.odometerWarning?.flagged === true, JSON.stringify(relist.body.odometerWarning));
+
+    if (first.status === 201 && relist.status === 201) {
+      const deal = await openDeal(String(relist.body.listing.id));
+      const dealId = deal.deal?.id;
+      if (dealId) {
+        await post(`/api/deals/${dealId}/fund`, {}, buyer.id);
+        const report = await uploadReport(String(dealId), 60000, 2);
+        check(
+          'a re-listing cannot reset the odometer baseline',
+          report.anomaly?.flagged === true,
+          `previous=${String(report.anomaly?.previousOdometerKm)} flagged=${String(report.anomaly?.flagged)}`,
+        );
+      } else {
+        check('the regression deal is created', false, JSON.stringify(deal));
+      }
+    }
+
+    // The warning must also block report acceptance until the buyer sees it.
+    const vin = await fetch(`${base}/api/vin/ODOSMOKERST26`).then((r) => r.json() as Promise<Record<string, any>>);
+    check(
+      'the warning stays visible on the VIN chain',
+      (vin.events ?? []).some((e: { type: string }) => e.type === 'odometer_anomaly'),
+    );
+  }
 }
 
 main().catch((error) => {

@@ -94,12 +94,22 @@ Semuanya menerima bukti (`evidenceEventIds`) atau alasan (`reason`) yang dicatat
 
 ## 7. Anomali kilometer
 
-Aturan: bila odometer pada laporan lebih rendah dari catatan terakhir VIN yang sama, sistem menulis
-event `odometer_anomaly` berisi nilai sebelumnya dan selisihnya.
+Aturan: dasar pembanding adalah **`maxOdometer` — angka tertinggi yang pernah tercatat** pada VIN yang
+sama (dari event `listing_created` dan `report_uploaded`), **bukan angka terakhir**. Bila sebuah
+laporan lebih rendah dari titik tertinggi itu, sistem menulis event `odometer_anomaly` berisi nilai
+pembanding dan selisihnya.
 
+> Kenapa bukan angka terakhir: satu laporan rendah akan **mereset** dasar pembanding, sehingga anomali
+> berikutnya hilang. Titik tertinggi hanya bisa naik, jadi tidak bisa dimundurkan. Fungsi
+> `latestOdometer()` tetap ada, tetapi hanya untuk **tampilan** riwayat.
+
+- Listing ulang sebuah VIN di bawah rekor tertingginya **diterima**, tetapi tidak pernah senyap:
+  `POST /api/listings` menulis event `odometer_anomaly` dan mengembalikan `odometerWarning` supaya
+  pembeli melihatnya.
 - Anomali **tidak** menolak otomatis.
 - Pembeli **wajib** menandai bahwa peringatan sudah dibaca sebelum dana inspeksi dilepas
-  (`acknowledgeAnomaly`), dan permintaan akan ditolak tanpa flag itu.
+  (`acknowledgeAnomaly`), dan permintaan akan ditolak tanpa flag itu. Pemeriksaan ini mencakup
+  seluruh riwayat VIN, termasuk peringatan dari listing ulang.
 - Aturan ini tidak boleh diubah mundur pada tahap perluasan; perubahan aturan harus terlihat di event log.
 
 ## 8. Keamanan dan ancaman utama
