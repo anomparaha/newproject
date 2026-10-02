@@ -8,7 +8,7 @@ out/
 build/
 *.tsbuildinfo
 
-# data lokal (basis data demo, upload mentah off-chain)
+# local data (demo database, raw off-chain uploads)
 .data/
 services/api/.data/
 

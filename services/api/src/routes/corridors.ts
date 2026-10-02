@@ -86,7 +86,7 @@ export function corridorRoutes(ctx: AppContext): Hono {
 
   /**
    * Public metrics: completed deals, median time to report, dispute rate.
-   * Plus empat angka pemicu berhenti perluasan.
+   * Plus the four numbers that halt expansion.
    */
   app.get('/corridors/:id/metrics', (c) => {
     const corridorId = c.req.param('id');

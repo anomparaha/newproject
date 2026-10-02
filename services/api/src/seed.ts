@@ -1,12 +1,12 @@
 /**
- * Seed demo VIN.
+  * VIN demo seed.
  *
  * This script does NOT write to the database directly. It calls the same API
- * lalu memanggil endpoint-nya lewat HTTP, sehingga sekaligus menjadi uji integrasi
+  * It then calls its own endpoints over HTTP, so it doubles as an integration test of
  * the main flow: listing -> escrow -> inspection -> handover -> receipt, plus one
  * odometer anomaly case that ends in a dispute.
  *
- * Pakai: npm run seed -- --reset
+  * Usage: npm run seed:reset
  */
 
 import { serve } from '@hono/node-server';
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     for (const suffix of ['', '-wal', '-shm']) {
       rmSync(`${dbPath()}${suffix}`, { force: true });
     }
-    console.log('[seed] basis data direset');
+    console.log('[seed] database reset')
   }
 
   const db = openDb();
@@ -91,7 +91,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   });
   const buyer = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'buyer',
-    displayName: 'Straits Auto Pte Ltd (Singapura)',
+    displayName: 'Straits Auto Pte Ltd (Singapore)',
     email: 'buyer@vin.demo',
     countryCode: 'SG',
     city: 'Singapore',
@@ -100,20 +100,20 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   const inspector1 = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'inspector',
     displayName: 'Nusantara Inspection Workshop',
-    email: 'inspeksi1@vin.demo',
+    email: 'workshop1@vin.demo',
     countryCode: 'ID',
     city: 'Jakarta',
   });
   const inspector2 = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'inspector',
-    displayName: 'Sahabat Motor (terafiliasi Anoodize)',
-    email: 'inspeksi2@vin.demo',
+    displayName: 'Sahabat Motor (affiliated with Anoodize)',
+    email: 'workshop2@vin.demo',
     countryCode: 'ID',
     city: 'Jakarta',
   });
   const curator = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'curator',
-    displayName: 'Kurator Koridor ID-SG',
+    displayName: 'ID-SG Corridor Curator',
     email: 'curator@vin.demo',
     countryCode: 'ID',
     city: 'Jakarta',
@@ -131,7 +131,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   await call(ctx, 'POST', `/api/actors/${inspector1.actor.id}/verify`, { level: 'business_verified' }, curator.actor.id);
   await call(ctx, 'POST', `/api/actors/${inspector2.actor.id}/verify`, { level: 'business_verified' }, curator.actor.id);
 
-  // Seller <-> workshop 2 affiliation (so it is blocked from this orders from that seller)
+  // Seller <-> workshop 2 affiliation (so it is blocked from that seller's orders)
   await call(
     ctx,
     'POST',
@@ -215,7 +215,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectionFeeAmount: '150',
       escrowCurrency: 'USDC',
       inspectionDeadlineHours: 72,
-      handoverTerms: 'Serah di lokasi Jakarta + bukti muat; konfirmasi kedua pihak',
+      handoverTerms: 'Handover at the Jakarta location + load proof; confirmation by both parties',
     },
     buyer.actor.id,
   );
@@ -285,7 +285,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectionFeeAmount: '150',
       escrowCurrency: 'USDC',
       inspectionDeadlineHours: 48,
-      handoverTerms: 'Serah di lokasi Jakarta, konfirmasi kedua pihak',
+      handoverTerms: 'Handover at the Jakarta location; confirmation by both parties',
     },
     buyer.actor.id,
   );
@@ -315,7 +315,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     inspector1.actor.id,
     { 'x-demo-backdate-hours': '4' },
   );
-  console.log(`[seed] Anomali kilometer ditandai: ${reportB.anomaly.flagged} (catatan sebelumnya ${reportB.anomaly.previousOdometerKm})`);
+  console.log(`[seed] Odometer anomaly flagged: ${reportB.anomaly.flagged} (previous record ${reportB.anomaly.previousOdometerKm})`);
 
   const dispute = await call<{ dispute: { id: string } }>(
     ctx,
@@ -352,7 +352,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectionFeeAmount: '100',
       escrowCurrency: 'USDC',
       inspectionDeadlineHours: 96,
-      handoverTerms: 'Serah di lokasi Surabaya',
+      handoverTerms: 'Handover at the Surabaya location'
     },
     buyer.actor.id,
   );
@@ -384,7 +384,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     note: completed.note.id,
   };
   writeFileSync(seedFile, JSON.stringify(payload, null, 2));
-  console.log(`[seed] ID demo ditulis ke ${seedFile}`);
+  console.log(`[seed] demo IDs written to ${seedFile}`);
   console.log('[seed] Open GET /api/vin/JTDKAMFU1M3123456 to view the event chain per VIN.');
 }
 

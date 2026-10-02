@@ -1,7 +1,7 @@
 /**
- * Basis data MVP memakai `node:sqlite` (bawaan Node 22), sehingga:
+  * The MVP database uses `node:sqlite` (built into Node 22), so:
  *  - no database server needs to run just to ship to Solana/Vercel,
- *  - mudah diganti ke Postgres di produksi (skema sengaja dibuat portabel).
+  *  - it can move to Postgres in production (the schema is portable by design).
  *
  * Schema rule: `events` is APPEND-ONLY. No UPDATE or DELETE ever touches that table.
  */

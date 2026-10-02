@@ -1,4 +1,4 @@
-//! Pencetakan NFT nota lewat Metaplex Core (opsional).
+//! Receipt NFT minting through Metaplex Core (optional).
 //!
 //! Two valid paths, and the choice has to be risk-aware:
 //!
@@ -15,7 +15,7 @@
 //! funds, which widens the audit surface.
 //!
 //! Suggested order: the Proof Stage uses Path A. Path B opens after an audit
-//! program escrow, karena menambah CPI ke program pihak ketiga berarti
+//! the escrow program, because adding a CPI to a third-party program means
 //! adds security assumptions to the path that moves money.
 //!
 //! NOTE: the code below has not been compiled in this development environment

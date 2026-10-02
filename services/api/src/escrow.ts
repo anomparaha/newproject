@@ -1,7 +1,7 @@
 /**
- * Implementasi escrow.
+  * Escrow implementations.
  *
- * MVP: MockEscrowProvider - meniru ledger escrow (rekening bersama / PJP berizin).
+  * MVP: MockEscrowProvider - imitates an escrow ledger (a licensed joint account / PJP).
  * Scale: AnchorEscrowProvider - a Solana program (Rust + Anchor) with PDA vaults and USDC.
  *
  * Both honour the same `EscrowProvider` contract, so deal logic does not change

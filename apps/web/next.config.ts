@@ -3,7 +3,7 @@ import type { NextConfig } from 'next';
 /**
  * The frontend calls the backend through relative `/api/*` routes so it never
  * calls localhost from the browser. This rewrite forwards to the API service
- * (di dev: http://127.0.0.1:8080; di produksi: URL internal platform).
+  (in dev: http://127.0.0.1:8080; in production: the platform internal URL).
  */
 const API_ORIGIN = process.env.VIN_API_URL ?? 'http://127.0.0.1:8080';
 

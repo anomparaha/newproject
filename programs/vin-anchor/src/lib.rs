@@ -6,7 +6,7 @@
 //!    different token accounts. One leg can never touch the other.
 //! 2. **Release needs evidence.** Every fund release takes an `evidence_hash`
 //!    recorded on-chain. Without evidence, funds do not move (enforced off-chain
-//!    event log dan divalidasi ulang di sini).
+//!    event log and re-validated here).
 //! 3. **A dispute freezes.** `release_leg` and `refund_leg` are rejected while
 //!    `deal.frozen`; only the arbiter can settle.
 //! 4. **A slashed bond goes to the dispute fund**, never to the team wallet.
@@ -15,7 +15,7 @@
 //!
 //! STATUS: written as a production path, **never compiled or deployed**
 //! in this development environment (no Rust/Solana toolchain available in
-//! sandbox). Jalankan `anchor build && anchor test` lalu ganti `declare_id!`.
+//! sandbox). Run `anchor build && anchor test`, then switch `declare_id!`.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -43,7 +43,7 @@ pub const DECISION_BOND_SLASHED: u8 = 3;
 pub mod vin_anchor {
     use super::*;
 
-    /// Konfigurasi awal. `admin` sebaiknya multisig (mis. Squads) sejak mainnet.
+    /// Initial configuration. `admin` should be a multisig (e.g. Squads) from mainnet on.
     pub fn initialize_config(
         ctx: Context<InitializeConfig>,
         arbiter: Pubkey,
@@ -69,7 +69,7 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Admin (multisig) dapat mengganti relayer, arbiter, treasury fee, dan
+    /// The admin (multisig) can replace the relayer, the arbiter, the fee treasury,
     /// pauses the program. No instruction can move funds to an admin.
     pub fn set_authorities(
         ctx: Context<AdminOnly>,
@@ -95,7 +95,7 @@ pub mod vin_anchor {
     }
 
     /// An actor registered with an identity attestation hash.
-    /// Data identitas usaha tetap off-chain dan dapat dicabut.
+    /// Business identity data stays off-chain and can be revoked.
     pub fn register_actor(ctx: Context<RegisterActor>, role: u8, attestation: [u8; 32]) -> Result<()> {
         require!(role <= ROLE_ARBITER, VinError::InvalidRole);
         let actor = &mut ctx.accounts.actor;
@@ -367,7 +367,7 @@ pub mod vin_anchor {
 
         // The deal is COMPLETE once both legs are fully released. This flag is what
         // opens `record_note`; without this step a receipt could never be
-        // dicatat on-chain dan alur bahagia berhenti di tengah jalan.
+        // recorded on-chain and the happy path stalls halfway.
         if deal.vehicle_released_amount == deal.vehicle_amount
             && deal.inspection_released_amount == deal.inspection_amount
         {
@@ -452,7 +452,7 @@ pub mod vin_anchor {
     /// Arbitration ruling for a frozen deal.
     ///
     /// Accounting MUST be exact, so no funds are stranded in the vault:
-    ///   - leg kendaraan: `to_buyer + to_seller == sisa leg kendaraan`
+    ///   - vehicle leg:   `to_buyer + to_seller == vehicle leg remainder`
     ///   - inspection leg: `to_inspector <= inspection leg remainder`, the rest to the buyer
     ///
     /// So a workshop that did the inspection can still be paid even when the deal
@@ -656,7 +656,7 @@ pub mod vin_anchor {
 }
 
 // ---------------------------------------------------------------------------
-// Akun
+// Accounts
 // ---------------------------------------------------------------------------
 
 const MAX_FEE_BPS: u16 = 1_000;
@@ -913,7 +913,7 @@ pub struct ReleaseLeg<'info> {
     pub seller_token: Account<'info, TokenAccount>,
     #[account(mut, token::mint = inspection_vault.mint)]
     pub inspector_token: Account<'info, TokenAccount>,
-    /// Penerima fee platform. Constraint mint + authority memastikan relayer
+    /// Platform fee recipient. The mint + authority constraints make sure the relayer
     /// cannot divert the fee to another wallet.
     #[account(
         mut,

@@ -4,11 +4,11 @@
   * STATUS: not yet run in this development environment because the Solana/Rust
   * toolchain is unavailable (the sandbox only reaches npm/PyPI/GitHub; static.
   * rust-lang.org and crates.io are blocked). Run `anchor test` on a machine or CI
- * punya toolchain — lihat .github/workflows/anchor.yml.
+  * has the toolchain — see .github/workflows/anchor.yml.
  *
   * These tests lock the SAME invariants as the TypeScript ledger model
   * (packages/shared/src/vault-spec.ts), which is property-tested here.
- * Jadi saat program benar-benar dikompilasi, kita membandingkan dua implementasi
+  * So once the program actually compiles, we compare two implementations
   * from the same rules — not testing one implementation in isolation.
  */
 
@@ -176,7 +176,7 @@ describe('vin-anchor', () => {
     );
   });
 
-  it('4. mendanai kedua leg, lalu saldo vault terpisah sesuai jumlah masing-masing', async () => {
+  it('4. funds both legs, then each vault balance matches its own amount'
     await program.methods
       .fundLeg(LEG_VEHICLE, new anchor.BN(VEHICLE_AMOUNT.toString()))
       .accounts({
@@ -247,7 +247,7 @@ describe('vin-anchor', () => {
         })
         .signers([relayer])
         .rpc(),
-      /DealFrozen|dibekukan/,
+      /DealFrozen|frozen/,
     );
 
     await assert.rejects(
@@ -264,7 +264,7 @@ describe('vin-anchor', () => {
         })
         .signers([relayer])
         .rpc(),
-      /DealFrozen|dibekukan/,
+      /DealFrozen|frozen/,
     );
   });
 
@@ -330,7 +330,7 @@ describe('vin-anchor', () => {
     assert.equal((await getAccount(provider.connection, feeToken)).amount, 0n);
   });
 
-  it('10. JALUR BAHAGIA: kedua leg tuntas -> deal completed -> nota boleh dicatat', async () => {
+  it('10. HAPPY PATH: both legs settled -> deal completed -> receipt may be recorded'
     // Regression for the flow finding: `release_leg` never marked the deal
     // `completed`, so on the happy path a receipt could NEVER be recorded.
     const buyer2 = Keypair.generate();
@@ -419,7 +419,7 @@ describe('vin-anchor', () => {
     state = await program.account.dealAccount.fetch(deal2);
     'both legs settled -> the deal must be completed'
 
-    // Dan sekarang nota boleh dicatat.
+        // And now the receipt may be recorded.
     await program.methods
       .recordNote(buyer2.publicKey, new anchor.BN(1), hash(83), PublicKey.default)
       .accounts({ relayer: relayer.publicKey, deal: deal2, note: notePda(deal2, 1n) })

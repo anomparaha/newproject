@@ -1,175 +1,181 @@
-# VIN — pasar kendaraan lintas negara
+# VIN — a cross-border vehicle market
 
-Listing terkunci, dana di **escrow**, laporan inspeksi menempel pada **nomor rangka**, dan deal selesai
-dicatat sebagai **bukti digital yang tidak bisa ditimpa**.
+Listings lock to a chassis number, money sits in **escrow**, inspection reports attach to the same
+number, and completed deals are recorded as **digital proof that cannot be overwritten**.
 
-> **VIN tidak memindahkan kepemilikan hukum.** BPKB, title, registrasi, bea cukai, pajak, dan balik
-> nama tetap mengikuti hukum negara asal dan negara tujuan. **NFT bukan surat kendaraan.**
-> **Uang kendaraan tidak lewat token volatil.** Token hanya jaminan dan akses.
+> **VIN does not transfer legal ownership.** Title, registration, customs, tax, and re-registration
+> stay under the law of the country of origin and the destination country. **The NFT is not a
+> vehicle title.** **Vehicle money never runs through a volatile token.** The token is only used for
+> bonds and access.
 
 ---
 
-## 1. Status repo ini — apa yang sudah jalan dan apa yang belum
+## 1. Where this repo stands — what runs and what does not
 
-Jujur di depan, supaya tidak ada klaim palsu:
+Stated up front, so nothing here is an overclaim:
 
-**Sudah jalan dan sudah diuji di repo ini**
+**Running and tested in this repo**
 
-- API Hono + `node:sqlite`: aktor, koridor, listing, deal, escrow dua leg, laporan inspeksi,
-  anomali kilometer, serah terima, nota, sengketa, arbitrase, reputasi, metrik koridor.
-- **Alur penuh lolos uji integrasi**: listing → escrow → inspeksi → laporan → penerimaan pembeli →
-  serah terima → pelepasan dana kendaraan → nota tercatat, plus satu kasus **anomali kilometer**
-  yang berujung **sengketa** dan **jaminan terpotong** (`npm run seed:reset`).
-- **41 uji** (`npm test`): 11 uji aturan inti (aritmetika uang desimal, state machine, prasyarat
-  pelepasan dana, anomali odometer, potongan jaminan) + **11 uji properti** untuk model ledger escrow
-  (ribuan kombinasi acak: over-release, double refund, putusan tidak tepat habis, bypass
-  pembekuan, dan deal wajib selesai sebelum nota boleh dicatat) + **19 uji aturan on-chain**
-  hasil rekonsiliasi dengan spesifikasi rancangan lima-kontrak: urutan pemanggilan wajib (di luar
-  urutan ditolak), satu VIN hanya satu deal, anomali odometer dihitung dari titik tertinggi dan tidak
-  bisa direset laporan rendah, serta jendela konfirmasi serah-terima.
-- Frontend Next.js: dasbor, listing, konsol deal, halaman VIN, pasar inspeksi, koridor, kebijakan.
-  Aksi tombol (danai escrow, unggah laporan, terima laporan, serah terima, lepas dana, sengketa,
-  putusan arbiter) memanggil API sungguhan.
+- Hono API + `node:sqlite`: actors, corridors, listings, deals, two-leg escrow, inspection reports,
+  odometer anomalies, handover, receipts, disputes, arbitration, reputation, corridor metrics.
+- **The full flow passes an integration test**: listing → escrow → inspection → report → buyer
+  acceptance → handover → vehicle fund release → receipt recorded, plus one **odometer anomaly**
+  case that ends in a **dispute** with the **bond slashed** (`npm run seed:reset`).
+- **41 tests** (`npm test`): 11 core rules tests (decimal money arithmetic, the state machine,
+  release preconditions, odometer anomalies, bond slashing) + **11 property tests** for the escrow
+  ledger model (thousands of random combinations: over-release, double refund, an inexact ruling,
+  a freeze bypass, and a deal that must complete before a receipt can be recorded) + **19 on-chain
+  rule tests** produced by reconciling against the five-contract design spec: the mandatory call
+  order (anything out of order is rejected), one deal per VIN, odometer anomalies computed from the
+  highest point and not resettable by a lower reading, and the handover confirmation window.
+- Next.js frontend: dashboard, listings, deal console, VIN page, inspection market, corridors, and
+  policy. The action buttons (fund escrow, upload a report, accept a report, handover, release
+  funds, open a dispute, arbiter ruling) call the real API.
 
-**Belum jalan / belum diverifikasi**
+**Not running / not verified**
 
-- `programs/vin-anchor/` (Rust + Anchor) — **belum dikompilasi maupun di-deploy**. Toolchain Rust dan
-  Solana tidak tersedia di lingkungan pengembangan ini (host rust-lang/crates.io diblokir di sandbox).
-  Jalankan `anchor build && anchor test` sebelum mengklaim apa pun tentang dana on-chain.
-  Rinciannya, termasuk **3 temuan review yang sudah diperbaiki** dan daftar yang belum ada:
-  **`docs/PROGRAM.md`**.
-- Selama program belum di-deploy, aturan vault tetap diuji lewat **model ledger TypeScript**
-  (`packages/shared/src/vault-spec.ts`) dengan uji properti — lihat `npm test`.
-- Escrow yang berjalan sekarang adalah `MockEscrowProvider` (meniru ledger penyedia berizin).
-  Belum ada uang nyata bergerak di mana pun.
-- **Belum ada NFT yang dicetak.** `note_completed` mencatat `noteAssetId: null` dan metadata nota
-  sudah disiapkan kompatibel Metaplex Core (`GET /api/notes/:id/metadata`).
-- Autentikasi masih memakai header `x-actor-id` (**hanya untuk demo**). Produksi: Sign-In With Solana
-  + attestation.
-- Belum ada KYC/KYB vendor, belum ada audit keamanan, belum ada izin OJK (lihat `docs/LEGAL.md`).
+- `programs/vin-anchor/` (Rust + Anchor) — **never compiled or deployed**. The Rust and Solana
+  toolchain is not available in this development environment (hosts such as rust-lang.org and
+  crates.io are blocked in the sandbox). Run `anchor build && anchor test` before claiming anything
+  about on-chain funds. Details, including the **3 review findings that were fixed** and the list of
+  what does not exist yet: **`docs/PROGRAM.md`**.
+- Until the program is deployed, vault rules are still tested through the **TypeScript ledger model**
+  (`packages/shared/src/vault-spec.ts`) with property tests — see `npm test`.
+- The escrow running today is `MockEscrowProvider` (it imitates a licensed provider ledger).
+  No real money moves anywhere yet.
+- **No NFT has been minted.** `note_completed` records `noteAssetId: null`, and the receipt metadata
+  is already prepared to be Metaplex Core compatible (`GET /api/notes/:id/metadata`).
+- Authentication still uses the `x-actor-id` header (**demo only**). Production: Sign-In With Solana
+  plus an attestation.
+- No KYC/KYB vendor, no security audit, and no OJK licence yet (see `docs/LEGAL.md`).
 
-## 2. Struktur repo
+## 2. Repo layout
 
 ```
 apps/web/                  Next.js 15 (App Router, React 19, Tailwind v4)
-services/api/              API Hono + node:sqlite (skema portabel ke Postgres)
-packages/shared/           Tipe, aturan state machine, aritmetika uang, hashing (dipakai API + web)
-programs/vin-anchor/       Program Solana (Rust + Anchor): escrow, jaminan, registri nota
-docs/                      Arsitektur, pilihan teknologi, API, roadmap, batas hukum
+services/api/              Hono API + node:sqlite (schema portable to Postgres)
+packages/shared/           Types, state machine rules, money arithmetic, hashing (used by API + web)
+programs/vin-anchor/       Solana program (Rust + Anchor): escrow, bonds, receipt registry
+docs/                      Architecture, tech choices, API, roadmap, legal boundaries
 ```
 
-## 3. Menjalankan
+## 3. Running it
 
 ```bash
 npm install
 
-# 1. Bangun paket domain bersama
+# 1. Build the shared domain package
 npm run build:shared
 
-# 2. Isi data demo (sekaligus uji integrasi alur penuh)
+# 2. Load demo data (this also exercises the full flow end to end)
 npm run seed:reset
 
-# 3. Jalankan API dan web (dua terminal)
+# 3. Run the API and the web app (two terminals)
 npm run dev:api     # http://0.0.0.0:8080
 npm run dev:web     # http://0.0.0.0:3000
 
-# Uji aturan inti
+# Core rules tests
 npm test
 ```
 
-Frontend memanggil backend lewat rute relatif `/api/*` yang diteruskan oleh rewrite Next
-(`apps/web/next.config.ts`), jadi browser tidak pernah memanggil `localhost` langsung.
+The frontend calls the backend through relative `/api/*` routes forwarded by the Next rewrite
+(`apps/web/next.config.ts`), so the browser never calls `localhost` directly.
 
-### Coba alurnya sebagai tiga orang
+### Walk the flow as three people
 
-Di sidebar ada **Persona demo**. Pilih aktor, lalu kerjakan langkah berikut:
+The sidebar has **demo personas**. Pick an actor, then work through the steps:
 
-1. **Pembeli** → buka listing → *Kunci deal & danai escrow*. Dua escrow dibuat terpisah.
-2. **Bengkel Inspeksi Nusantara** → unggah laporan (tombol *contoh* mengisi hash sha256).
-   Untuk melihat anomali: isi odometer lebih rendah dari catatan penjual pada VIN itu.
-3. **Pembeli** → terima laporan (wajib mencentang peringatan anomali bila ada).
-4. **Pembeli & Penjual** → konfirmasi serah terima → **lepas dana kendaraan** → nota tercatat.
-5. Untuk sengketa: pilih **Arbiter** lalu putuskan. Coba juga memilih bengkel **Sahabat Motor**
-   saat mengunci deal — bengkel itu terafiliasi dengan penjual dan **diblokir** oleh sistem.
+1. **Buyer** → open a listing → *Lock deal & fund escrow*. Two separate escrows are created.
+2. **Nusantara Inspection Workshop** → upload a report (the *example* button fills in a sha256 hash).
+   To see an anomaly: enter an odometer reading lower than the seller's record for that VIN.
+3. **Buyer** → accept the report (the anomaly warning must be ticked when one exists).
+4. **Buyer & Seller** → confirm handover → **release vehicle funds** → the receipt is recorded.
+5. For a dispute: pick the **Arbiter** and rule. Also try choosing the **Sahabat Motor** workshop
+   when locking a deal — it is affiliated with the seller and **blocked** by the system.
 
-## 4. Aturan yang ditegakkan mesin (bukan hanya niat di dokumen)
+## 4. Rules the machine enforces (not just intentions in a document)
 
-| Aturan | Di mana ditegakkan |
+| Rule | Where it is enforced |
 | --- | --- |
-| Dana kendaraan tidak cair sebelum syarat serah terima | `vehicleReleasePreconditions` + `POST /deals/:id/release-vehicle` (409 bila belum) |
-| Dana inspeksi tidak cair sebelum laporan lengkap | `inspectionReleasePreconditions` + `POST /deals/:id/reports/:rid/accept` |
-| Penjual tidak memilih inspektor; bengkel terafiliasi diblokir | `INSPECTOR_CONFLICT` pada `POST /listings/:id/deals` |
-| Event lama tidak bisa diedit | Tabel `events` append-only + nomor urut `UNIQUE (vin, seq)` |
-| Anomali kilometer tetap terlihat | `odometer_anomaly` + penerimaan laporan wajib acknowledge |
-| Sengketa membekukan escrow dan nota | `freeze_deal` + status `frozen` menolak pelepasan |
-| Jaminan terpotong masuk kas sengketa | `slashBond()` + `dispute_fund`, bukan dompet tim |
-| Dua escrow terpisah (uang kendaraan vs inspeksi) | `escrows` unik per `(deal_id, leg)`; dua vault di Anchor |
-| Perluasan koridor dihentikan bila 4 angka buruk sekaligus | `evaluateCorridorHealth()` + `expansionHalted` |
+| Vehicle funds do not release before the handover terms are met | `vehicleReleasePreconditions` + `POST /deals/:id/release-vehicle` (409 until they are) |
+| Inspection funds do not release before a complete report | `inspectionReleasePreconditions` + `POST /deals/:id/reports/:rid/accept` |
+| The seller cannot pick the inspector; affiliated workshops are blocked | `INSPECTOR_CONFLICT` on `POST /listings/:id/deals` |
+| Past events cannot be edited | Append-only `events` table + sequence `UNIQUE (vin, seq)` |
+| An odometer anomaly stays visible | `odometer_anomaly` + report acceptance must acknowledge it |
+| A dispute freezes escrow and the receipt | `freeze_deal` + the `frozen` status rejects releases |
+| A slashed bond goes to the dispute fund | `slashBond()` + `dispute_fund`, never the team wallet |
+| Two separate escrows (vehicle money vs inspection) | `escrows` unique per `(deal_id, leg)`; two vaults in Anchor |
+| Corridor expansion halts when four numbers go bad at once | `evaluateCorridorHealth()` + `expansionHalted` |
 
-## 5. Endpoint penting
+## 5. Key endpoints
 
 ```
-GET  /api/meta/policy                  seluruh kebijakan publik (fee, jaminan, tahapan, taksonomi event)
-GET  /api/metrics/token                jaminan terkunci (satu-satunya "metrik token" yang diklaim)
-GET  /api/listings                     daftar listing + koridor yang dilayani
-GET  /api/vin/:vin                     rangkaian event, laporan, nota, anomali, batas klaim
-POST /api/listings/:id/deals           pembeli mengunci deal (dua escrow dibuat)
-POST /api/deals/:id/fund               pendanaan escrow (produksi: webhook penyedia berizin)
-POST /api/deals/:id/reports            bengkel mengunggah laporan (hash saja)
-POST /api/deals/:id/reports/:rid/accept  pembeli menerima laporan -> dana inspeksi lepas
-POST /api/deals/:id/handover           konfirmasi serah terima per pihak
-POST /api/deals/:id/release-vehicle    lepas dana kendaraan + catat nota
-POST /api/deals/:id/disputes           buka sengketa (membekukan escrow)
-POST /api/disputes/:id/resolve         putusan arbiter
-GET  /api/inspectors                   pasar inspeksi (ranking dari kinerja, bukan dibeli)
-GET  /api/corridors/:id/metrics        metrik publik + pemicu berhenti perluasan
-GET  /api/notes/:id/metadata           metadata nota kompatibel Metaplex Core
+GET  /api/meta/policy                  all public policy (fees, bonds, stages, event taxonomy)
+GET  /api/metrics/token                locked bonds (the only "token metric" claimed)
+GET  /api/listings                     listings plus the corridors served
+GET  /api/vin/:vin                     event chain, reports, receipts, anomalies, claim boundary
+POST /api/listings/:id/deals           the buyer locks a deal (two escrows are created)
+POST /api/deals/:id/fund               escrow funding (production: a licensed provider webhook)
+POST /api/deals/:id/reports            the workshop uploads a report (hash only)
+POST /api/deals/:id/reports/:rid/accept  the buyer accepts the report -> inspection funds release
+POST /api/deals/:id/handover           handover confirmation per party
+POST /api/deals/:id/release-vehicle    release vehicle funds + record the receipt
+POST /api/deals/:id/disputes           open a dispute (freezes escrow)
+POST /api/disputes/:id/resolve         arbiter ruling
+GET  /api/inspectors                   inspection market (ranked by performance, not bought)
+GET  /api/corridors/:id/metrics        public metrics + expansion halt triggers
+GET  /api/notes/:id/metadata           Metaplex Core compatible receipt metadata
 ```
 
-Referensi lengkap: `docs/API.md`.
+Full reference: `docs/API.md`.
 
-## 6. Pertanyaan tentang Rust, Go, dan "bahasa buatan Google"
+## 6. On Rust, Go, and "the language Google made"
 
-Jawabannya ada di **`docs/TECH_STACK.md`**. Ringkasan:
+The answer lives in **`docs/TECH_STACK.md`**. Summary:
 
-- **Program on-chain wajib Rust + Anchor** — bukan soal selera, itu satu-satunya jalur produksi Solana.
-- **Backend MVP TypeScript** (Node 22 + Hono) karena yang menentukan biaya bukan bahasa, melainkan
-  integrasi KYC, escrow berizin, dan sengketa; plus satu bahasa dengan frontend memudahkan tipe bersama.
-- **Go tetap disiapkan sebagai jalur keluar yang terukur**: pindah hanya bila p95 endpoint deal
-  > 300 ms karena runtime, atau > 500 rps berkelanjutan. Pindahkan tiga service, bukan semuanya.
-- **Go adalah bahasa buatan Google** — itu betul, dan Go dipakai luas untuk infrastruktur. Yang keliru
-  adalah menganggap Go dipakai untuk program Solana. Program Solana tidak dikompilasi dari Go.
+- **The on-chain program has to be Rust + Anchor** — not a matter of taste, it is the only
+  production path on Solana.
+- **The MVP backend is TypeScript** (Node 22 + Hono) because cost is decided not by the language but
+  by KYC integration, a licensed escrow provider, and disputes; sharing one language with the
+  frontend also means shared types.
+- **Go stays on the table as a measured exit path**: move only if a deal endpoint's p95 exceeds
+  300 ms because of the runtime, or sustained traffic passes 500 rps. Move three services, not all
+  of them.
+- **Go is a language Google made** — true, and Go is widely used for infrastructure. The mistake is
+  assuming Go is used for Solana programs. Solana programs are not compiled from Go.
 
-## 7. Urutan peluncuran
+## 7. Launch order
 
-Empat tahap dari dokumen konsep, dipetakan ke pekerjaan nyata:
+Four stages from the concept document, mapped to real work:
 
-1. **Tahap Bukti** — satu koridor, inspeksi wajib, escrow wajib, riwayat VIN menyala, NFT nota hanya
-   untuk deal selesai, **belum ada penjualan token ke publik**, jaminan dalam stablecoin.
-2. **Tahap Pasar** — bengkel pihak ketiga, standar laporan dan pembekuan sengketa berjalan,
-   metrik publik: deal selesai, waktu median sampai laporan, tingkat sengketa.
-3. **Tahap Token** — token terbit hanya setelah ada penjual dan bengkel yang benar-benar
-   membutuhkan jaminan dan potongan fee. Tanpa alokasi yang dibingkai sebagai hak atas pendapatan.
-4. **Tahap Perluasan** — koridor kedua, aturan anomali kilometer tidak diubah mundur.
+1. **Proof Stage** — one corridor, mandatory inspection, mandatory escrow, VIN history live, receipt
+   NFTs only for completed deals, **no public token sale**, bonds in stablecoin.
+2. **Market Stage** — third-party workshops, report standards and dispute freezing running, public
+   metrics: completed deals, median time to report, dispute rate.
+3. **Token Stage** — a token only once sellers and workshops genuinely need bonds and fee discounts.
+   No allocation framed as a claim on revenue.
+4. **Expansion Stage** — a second corridor, and the odometer anomaly rules are never rolled back.
 
-Rincian pekerjaan, gate, dan checklist mainnet: **`docs/ROADMAP.md`**.
+Work breakdown, gates, and the mainnet checklist: **`docs/ROADMAP.md`**.
 
-## 8. Dokumen lain
+## 8. Other documents
 
-- `docs/ARCHITECTURE.md` — arsitektur, model data, alur dana, keamanan.
-- `docs/TECH_STACK.md` — pilihan teknologi + jawaban Rust/Go.
-- `docs/API.md` — referensi endpoint.
-- `docs/ROADMAP.md` — tahapan, gate, checklist produksi & mainnet.
-- `docs/FLOW.md` — **alur smart contract langkah demi langkah**: siapa menandatangani apa, diagram
-  jalur bahagia & sengketa, dan apa yang dijaga program vs tidak.
-- `docs/PROGRAM.md` — referensi smart contract: akun, instruksi, invarian, temuan review, yang belum ada.
-- `docs/SPEC_RECONCILIATION.md` — **perbandingan alur rancangan lima-kontrak vs implementasi**: 20
-  perbedaan, dua bug logika penting, penilaian per area, dan urutan adopsi bertahap.
-- `docs/DEPLOYMENT.md` — deploy MVP, kesiapan dana nyata, dan cara menghidupkan jalur on-chain.
-- `docs/LEGAL.md` — batas hukum, kepatuhan, dan apa yang **tidak boleh** dipublikasikan.
+- `docs/ARCHITECTURE.md` — architecture, data model, money flow, security.
+- `docs/TECH_STACK.md` — tech choices + the Rust/Go answer.
+- `docs/API.md` — endpoint reference.
+- `docs/ROADMAP.md` — stages, gates, production & mainnet checklist.
+- `docs/FLOW.md` — **the smart contract flow step by step**: who signs what, the happy path and
+  dispute branch diagrams, and what the program does and does not guard.
+- `docs/PROGRAM.md` — smart contract reference: accounts, instructions, invariants, review findings,
+  what does not exist yet.
+- `docs/SPEC_RECONCILIATION.md` — **the five-contract design flow compared against the
+  implementation**: 20 differences, two critical logic bugs, an area-by-area assessment, and the
+  phased adoption order.
+- `docs/DEPLOYMENT.md` — MVP deployment, real-money readiness, and how to turn on the on-chain path.
+- `docs/LEGAL.md` — legal boundaries, compliance, and what must **not** be published.
 
-## 9. Peringatan
+## 9. Warning
 
-Repositori ini adalah **fondasi produk**, bukan janji investasi. Tidak ada token yang dijual, tidak ada
-proyeksi harga, dan tidak ada janji hasil untuk siapa pun. Sebelum uang nyata bergerak: audit kontrak,
-izin penyelenggara yang berlaku, dan pendapat hukum di kedua negara koridor.
+This repository is a **product foundation**, not an investment promise. No token is sold, no price
+projection is made, and no return is promised to anyone. Before real money moves: a contract audit,
+the applicable provider licences, and legal opinions in both corridor countries.

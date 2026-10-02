@@ -11,7 +11,7 @@ export function metaRoutes(ctx: AppContext): Hono {
     c.json({
       status: 'ok',
       service: 'vin-api',
-      stage: 'bukti',
+      stage: 'proof',
       escrowProvider: ctx.escrow.kind,
       time: new Date().toISOString(),
     }),
@@ -70,11 +70,11 @@ export function metaRoutes(ctx: AppContext): Hono {
   /**
    * Demo actors for selecting a persona in the interface.
    * Turn it off with VIN_DEMO_MODE=false in production - there, identity
-   * memakai Sign-In With Solana + attestation, bukan header x-actor-id.
+    * uses Sign-In With Solana + attestation instead of the x-actor-id header.
    */
   app.get('/demo/actors', (c) => {
     if (process.env.VIN_DEMO_MODE === 'false') {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'Mode demo dimatikan' } }, 404);
+      message: 'Demo mode is off'
     }
     const rows = all(ctx.db, 'SELECT * FROM actors ORDER BY role, created_at');
     return c.json({

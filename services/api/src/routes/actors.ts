@@ -126,7 +126,7 @@ export function actorRoutes(ctx: AppContext): Hono {
   /**
    * Business identity verification by the corridor curator.
    * In production this step produces a verifiable attestation
-   * (mis. Solana Attestation Service), bukan kolom basis data biasa.
+    * (e.g. the Solana Attestation Service), not a plain database column.
    */
   app.post('/actors/:id/verify', async (c) => {
     const actorId = c.req.param('id');

@@ -7,7 +7,7 @@ on:
 
 jobs:
   node:
-    name: API + Web + aturan domain
+    name: API + Web + domain rules
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,23 +17,23 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Instal dependensi
+      - name: Install dependencies
         run: npm ci
 
-      - name: Bangun paket domain bersama
+      - name: Build the shared domain package
         run: npm run build:shared
 
       - name: Typecheck (shared, api, web)
         run: npm run typecheck
 
-      - name: Uji aturan inti + uji properti ledger escrow
+      - name: Core rules tests + escrow ledger property tests
         run: npm test
 
-      - name: Seed data demo (sekaligus uji integrasi alur penuh)
+      - name: Seed demo data (full-flow integration test)
         run: npm run seed:reset
 
-      - name: Uji asap API (invariant escrow & batas klaim)
+      - name: API smoke test (escrow invariants & claim boundary)
         run: npm run smoke
 
-      - name: Build produksi frontend
+      - name: Production build of the frontend
         run: npm run build --workspace @vin/web

@@ -168,7 +168,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         ? String(Number(listing.price_amount) + Number(input.shippingAmount))
         : String(listing.price_amount);
 
-    // Baris deal ditulis dulu (escrow merujuk deal_id), lalu escrow dibuat,
+    // The deal row is written first (the escrow references deal_id), then the escrows,
     // then the references are updated. This order respects the foreign key.
     run(
       db,
@@ -289,7 +289,7 @@ export function dealRoutes(ctx: AppContext): Hono {
   });
 
   // -------------------------------------------------------------------------
-  // Inspeksi
+    // Inspection
   // -------------------------------------------------------------------------
   app.post('/deals/:id/reports', zValidator('json', zUploadReport), (c) => {
     const dealId = c.req.param('id');
@@ -860,7 +860,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         bondSlashedAmount: bondSlashedAmount ?? undefined,
         arbiterNote:
           inspectionSettlement && inspectionSettlement.toInspector !== '0'
-            ? `${input.arbiterNote} | Inspeksi dibayar ${inspectionSettlement.toInspector} ${inspectionSettlement.currency}`
+            ? `${input.arbiterNote} | inspection paid ${inspectionSettlement.toInspector} ${inspectionSettlement.currency}`
             : input.arbiterNote,
       },
       actorId: input.arbiterId,
@@ -943,7 +943,7 @@ export function dealRoutes(ctx: AppContext): Hono {
   });
 
   // -------------------------------------------------------------------------
-  // Nota (NFT pointer)
+    // Receipt (NFT pointer)
   // -------------------------------------------------------------------------
   app.get('/notes', (c) => {
     const ownerId = c.req.query('ownerId');
@@ -968,17 +968,17 @@ export function dealRoutes(ctx: AppContext): Hono {
     const note = get(db, 'SELECT * FROM notes WHERE id = ?', [c.req.param('id')]);
     if (!note) return c.json({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } }, 404);
     return c.json({
-      name: `VIN Nota ${note.vin}`,
+      name: `VIN Receipt ${note.vin}`,
       symbol: 'VINNOTE',
       description:
-        'Nota deal kendaraan lintas negara. Jejak klaim dan transaksi, bukan surat kendaraan (bukan BPKB/title). ' +
-        'Kepemilikan hukum mengikuti dokumen resmi negara asal dan tujuan.',
+        'A cross-border vehicle deal receipt. A claim and transaction trail, not a vehicle title (not a BPKB/title). ' +
+        'Legal ownership follows the official documents of the origin and destination countries.',
       image: '',
       external_url: `/vin/${note.vin}`,
       attributes: [
         { trait_type: 'VIN', value: String(note.vin) },
         { trait_type: 'Deal', value: String(note.deal_id) },
-        { trait_type: 'Harga', value: `${note.price_amount} ${note.price_currency}` },
+        { trait_type: 'Price', value: `${note.price_amount} ${note.price_currency}` },
         { trait_type: 'Status', value: String(note.status) },
         { trait_type: 'EscrowTx', value: String(note.escrow_tx_id ?? '') },
         { trait_type: 'EvidenceRoot', value: String(note.evidence_root) },
