@@ -9,13 +9,13 @@ export function reputationRoutes(ctx: AppContext): Hono {
 
   app.get('/reputation/:actorId', (c) => {
     const result = recomputeReputation(ctx.db, c.req.param('actorId'));
-    if (!result) return c.json({ error: { code: 'NOT_FOUND', message: 'Aktor tidak ditemukan' } }, 404);
-    return c.json({ reputation: result, note: 'Ranking tidak dijual. Urutan berasal dari kinerja laporan dan sengketa.' });
+    message: 'Actor not found'
+    return c.json({ reputation: result, note: 'Ranking is not for sale. Order comes from report and dispute performance.' });
   });
 
   /**
-   * Pasar inspeksi: bengkel terverifikasi, diurutkan dari kinerja.
-   * Bengkel dengan sengketa berulang keluar dari daftar.
+   * Inspection market: verified workshops, ordered by performance.
+   * A workshop with repeated disputes drops off the list.
    */
   app.get('/inspectors', (c) => {
     const country = c.req.query('country');
@@ -51,9 +51,9 @@ export function reputationRoutes(ctx: AppContext): Hono {
     return c.json({
       inspectors: ranked,
       note:
-        'Biaya inspeksi ditentukan bengkel, dibayar pembeli, ditahan escrow, dan dilepas setelah laporan lengkap. ' +
-        'Laporan adalah temuan pada tanggal inspeksi, bukan garansi sampai kendaraan tiba di negara pembeli.',
-      rankingPolicy: 'Ranking tidak dijual, tidak bisa dibeli dengan token.',
+        'The workshop sets its fee, the buyer pays it, escrow holds it, and it releases after a complete report. ' +
+        'A report states findings on the inspection date, not a warranty until the vehicle reaches the buyer country.',
+      rankingPolicy: 'Ranking is not for sale and cannot be bought with the token.',
     });
   });
 

@@ -7,7 +7,7 @@ import { appendEvent, eventsForVin, latestOdometer } from '../events.js';
 import { serializeActor, serializeBond, serializeListing, serializeNote, serializeReport } from '../serialize.js';
 import { BONDS, CANDIDATE_CORRIDORS, PILOT_CORRIDOR } from '../policy.js';
 
-/** Kurs sederhana untuk ambang nilai koridor. Produksi: sumber kurs berizin + audit. */
+/** A simple rate for corridor value thresholds. Production: a licensed rate source plus audit. */
 const USD_RATES: Record<string, number> = { USD: 1, USDC: 1, IDR: 1 / 16_200 };
 
 export function listingRoutes(ctx: AppContext): Hono {
@@ -17,30 +17,30 @@ export function listingRoutes(ctx: AppContext): Hono {
     const input = c.req.valid('json');
     const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
     const seller = get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [input.sellerId]);
-    if (!seller) return c.json({ error: { code: 'NOT_FOUND', message: 'Penjual tidak ditemukan' } }, 404);
+    if (!seller) return c.json({ error: { code: 'NOT_FOUND', message: 'Seller not found' } }, 404);
     if (seller.role !== 'seller') {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya akun penjual/dealer yang bisa membuat listing' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only a seller/dealer account may create a listing' } }, 403);
     }
     if (callerId && callerId !== input.sellerId) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya penjual pemilik akun yang boleh membuat listing atas namanya' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only the account owner may create a listing in their own name' } }, 403);
     }
 
     const rate = USD_RATES[input.priceCurrency];
-    if (!rate) return c.json({ error: { code: 'FORBIDDEN', message: `Mata uang ${input.priceCurrency} belum didukung` } }, 400);
+    if (!rate) return c.json({ error: { code: 'FORBIDDEN', message: `Currency ${input.priceCurrency} is not supported yet` } }, 400);
     const priceUsd = Number(input.priceAmount) * rate;
     const corridor = PILOT_CORRIDOR;
     if (!corridor) {
-      return c.json({ error: { code: 'CORRIDOR_NOT_SERVED', message: 'Koridor belum dilayani' } }, 403);
+      return c.json({ error: { code: 'CORRIDOR_NOT_SERVED', message: 'This corridor is not served yet' } }, 403);
     }
     const aboveThreshold = priceUsd >= corridor.minVehiclePriceUsd;
 
-    // Di atas ambang nilai: penjual harus terverifikasi dan mengunci jaminan.
+    // Above the value threshold: the seller must be verified and lock a bond.
     if (aboveThreshold && seller.verification !== 'business_verified') {
       return c.json(
         {
           error: {
             code: 'FORBIDDEN',
-            message: `Listing di atas ambang USD ${corridor.minVehiclePriceUsd} memerlukan verifikasi identitas usaha penjual.`,
+            message: `A listing above USD ${corridor.minVehiclePriceUsd} requires business identity verification for the seller.`,
           },
         },
         403,
@@ -51,7 +51,7 @@ export function listingRoutes(ctx: AppContext): Hono {
         {
           error: {
             code: 'BOND_REQUIRED',
-            message: `Listing di atas ambang nilai wajib mengunci jaminan (mis. ${BONDS.listingBondUsdc} USDC) sebelum tayang.`,
+            message: `A listing above the value threshold must lock a bond (e.g. ${BONDS.listingBondUsdc} USDC) before going live.`,
             details: { suggested: { amount: BONDS.listingBondUsdc, currency: 'USDC' } },
           },
         },
@@ -124,7 +124,7 @@ export function listingRoutes(ctx: AppContext): Hono {
         listing: serializeListing(get(ctx.db, 'SELECT * FROM listings WHERE id = ?', [id])!),
         bond: bondRow ? serializeBond(bondRow) : null,
         event,
-        note: 'Data ini belum menjadi nota selesai. Statusnya listed.',
+        note: 'This is not a completion receipt yet. Its status is listed.',
       },
       201,
     );
@@ -160,7 +160,7 @@ export function listingRoutes(ctx: AppContext): Hono {
 
   app.get('/listings/:id', (c) => {
     const row = get(ctx.db, 'SELECT * FROM listings WHERE id = ?', [c.req.param('id')]);
-    if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Listing tidak ditemukan' } }, 404);
+    if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Listing not found' } }, 404);
     const seller = get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [row.seller_id]);
     return c.json({
       listing: serializeListing(row),
@@ -170,19 +170,19 @@ export function listingRoutes(ctx: AppContext): Hono {
   });
 
   /**
-   * Listing hanya bisa diubah SEBELUM ada pembeli. Setiap perubahan dicatat
-   * sebagai event baru - event lama tidak ditimpa.
+   * A listing can only change BEFORE a buyer commits. Every change is recorded as
+   * a new event - old events are never overwritten.
    */
   app.patch('/listings/:id', async (c) => {
     const listingId = c.req.param('id');
     const listing = get(ctx.db, 'SELECT * FROM listings WHERE id = ?', [listingId]);
-    if (!listing) return c.json({ error: { code: 'NOT_FOUND', message: 'Listing tidak ditemukan' } }, 404);
+    if (!listing) return c.json({ error: { code: 'NOT_FOUND', message: 'Listing not found' } }, 404);
     const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
     if (!callerId || callerId !== String(listing.seller_id)) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya penjual yang boleh mengubah listingnya' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only the seller may change their listing' } }, 403);
     }
     if (String(listing.status) !== 'listed') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: 'Listing sudah ada pembeli atau sudah selesai. Perubahan tidak diizinkan.' } }, 409);
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: 'This listing already has a buyer or has completed. Changes are not allowed.' } }, 409);
     }
     const body = (await c.req.json().catch(() => ({}))) as Partial<{
       priceAmount: string;
@@ -215,7 +215,7 @@ export function listingRoutes(ctx: AppContext): Hono {
       params.push(JSON.stringify(body.photoHashes));
     }
     if (fields.length === 0) {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'Tidak ada field yang diubah' } }, 400);
+      return c.json({ error: { code: 'NOT_FOUND', message: 'No field was changed' } }, 400);
     }
     fields.push('updated_at = ?');
     params.push(updatedAt);
@@ -234,8 +234,8 @@ export function listingRoutes(ctx: AppContext): Hono {
   });
 
   /**
-   * Halaman kendaraan: rangkaian event per VIN + laporan + nota.
-   * Wajib menampilkan batas hukum: ini jejak klaim dan transaksi, bukan title.
+   * Vehicle page: the event chain per VIN plus reports and receipts.
+   * It must state the legal boundary: a claim and transaction trail, not a title.
    */
   app.get('/vin/:vin', (c) => {
     const vin = c.req.param('vin').toUpperCase();
@@ -255,8 +255,8 @@ export function listingRoutes(ctx: AppContext): Hono {
       anomalies,
       lastOdometer,
       claimsBoundary:
-        'Catatan ini adalah jejak klaim dan transaksi, bukan title/BPKB. Kepemilikan hukum tetap pada dokumen resmi negara asal dan tujuan.',
-      ifNoData: events.length === 0 ? 'Belum ada riwayat di platform untuk VIN ini.' : null,
+        'This record is a claim and transaction trail, not a title. Legal ownership stays with the official documents of the origin and destination countries.',
+      ifNoData: events.length === 0 ? 'No history on the platform for this VIN yet.' : null,
     });
   });
 

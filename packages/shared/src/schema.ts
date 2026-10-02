@@ -1,17 +1,17 @@
 /**
- * Skema validasi & hash kriptografis.
+ * Validation schemas and cryptographic hashing.
  *
- * Prinsip: file mentah disimpan off-chain; yang dikunci hanyalah hash.
- * `anchorPayload` menormalkan payload menjadi JSON kanonik sehingga hash
- * dapat diverifikasi ulang oleh pihak ketiga dari data mentah.
+ * Principle: raw files stay off-chain; only the hash is anchored.
+ * `anchorPayloadHash` normalises a payload into canonical JSON so any third
+ * party can recompute the hash from the raw data.
  */
 
 import { z } from 'zod';
 
-export const zBase58 = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Alamat Solana base58 tidak valid');
-export const zSha256Hex = z.string().regex(/^[0-9a-f]{64}$/, 'Hash harus sha256 hex 64 karakter');
+export const zBase58 = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Invalid base58 Solana address');
+export const zSha256Hex = z.string().regex(/^[0-9a-f]{64}$/, 'Hash must be 64 hex characters (sha256)');
 export const zCurrency = z.enum(['USDC', 'IDR', 'USD']);
-export const zAmount = z.string().regex(/^\d+(\.\d+)?$/, 'Jumlah harus string desimal positif');
+export const zAmount = z.string().regex(/^\d+(\.\d+)?$/, 'Amount must be a positive decimal string');
 export const zCountryCode = z.string().length(2).transform((v) => v.toUpperCase());
 
 export const zRegisterActor = z.object({
@@ -36,7 +36,7 @@ export const zCreateListing = z.object({
   priceCurrency: zCurrency,
   shippingTerms: z.string().min(4).max(400),
   photoHashes: z.array(zSha256Hex).min(1).max(40),
-  /** Bobot jaminan bila listing tayang di atas ambang nilai koridor. */
+  /** Bond weight when a listing is published above the corridor value threshold. */
   bond: z
     .object({ amount: zAmount, currency: z.enum(['VIN', 'USDC']) })
     .optional(),
@@ -61,7 +61,7 @@ export const zUploadReport = z.object({
   dashboardPhotoHash: zSha256Hex,
   conditionSummary: z.string().min(4).max(2000),
   standardVersion: z.string().min(1).max(32),
-  /** Item minimum yang diperiksa - bila kurang, laporan dianggap tidak memenuhi standar. */
+  /** Minimum items checked — a report that skips any of them fails the standard. */
   checklist: z
     .object({
       vin_matches_unit: z.boolean(),
@@ -100,7 +100,7 @@ export const zConfirmHandover = z.object({
   method: z.enum(['handover_location_confirmed', 'load_proof', 'mutual_confirmation']),
 });
 
-/** Laporan minimum sesuai konsep §3 & §4. */
+/** Minimum report items per concept §3 and §4. */
 export const REQUIRED_REPORT_ITEMS = [
   'vin_matches_unit',
   'dashboard_photo',
@@ -115,7 +115,7 @@ export function reportMeetsStandard(checklist: Record<string, boolean>): { ok: b
 }
 
 // ---------------------------------------------------------------------------
-// Hashing (sha256, Web Crypto - jalan di Node 22, edge, dan browser)
+// Hashing (sha256 via Web Crypto — works on Node 22, edge, and browsers)
 // ---------------------------------------------------------------------------
 
 function toHex(bytes: Uint8Array): string {
@@ -124,15 +124,15 @@ function toHex(bytes: Uint8Array): string {
 
 export async function sha256Hex(input: string | Uint8Array): Promise<string> {
   const bytes: Uint8Array = typeof input === 'string' ? new TextEncoder().encode(input) : input;
-  // Buffer yang sudah pasti (bukan SharedArrayBuffer) supaya tipe ini jalan
-  // di Node, Edge Runtime, maupun browser tanpa bergantung pada lib DOM.
+  // Copy into a fresh buffer (never a SharedArrayBuffer) so this type-checks on
+  // Node, Edge Runtime, and browsers without depending on DOM lib types.
   const buffer = new Uint8Array(bytes.byteLength);
   buffer.set(bytes);
   const digest = await crypto.subtle.digest('SHA-256', buffer);
   return toHex(new Uint8Array(digest));
 }
 
-/** JSON kanonik: urutan kunci deterministik supaya hash dapat direproduksi. */
+/** Canonical JSON: deterministic key order so the hash is reproducible. */
 export function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -143,8 +143,8 @@ export function canonicalJson(value: unknown): string {
 }
 
 /**
- * Payload yang ditulis ke Solana: VIN, hash, status, dan waktu.
- * Data pribadi pembeli/penjual TIDAK ditulis ke chain.
+ * Payload written to Solana: VIN, hash, status, and time. Buyer and seller
+ * personal data is NEVER written on-chain.
  */
 export interface AnchorPayloadInput {
   vin: string;
@@ -158,7 +158,7 @@ export async function anchorPayloadHash(input: AnchorPayloadInput): Promise<stri
   return sha256Hex(canonicalJson(input));
 }
 
-/** Merkle root sederhana untuk hash seluruh bukti satu nota. */
+/** Simple Merkle root over every evidence hash of one receipt. */
 export async function evidenceRoot(hashes: string[]): Promise<string> {
   if (hashes.length === 0) return sha256Hex('');
   let level = hashes.slice().sort();

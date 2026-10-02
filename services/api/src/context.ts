@@ -7,28 +7,28 @@ export interface AppContext {
 }
 
 /**
- * Autentikasi demo memakai header `x-actor-id`.
+ * Demo authentication uses the `x-actor-id` header.
  *
- * PRODUKSI: ganti dengan Sign-In With Solana (SIWS) + verifikasi attestation.
- * Model yang direkomendasikan:
- *  - Dompet Solana sebagai identitas (challenge nonce ditandatangani).
- *  - Verifikasi identitas usaha (KYB) penjual/bengkel diterbitkan sebagai
- *    attestation (mis. Solana Attestation Service / penjual attestation berizin),
- *    bukan disimpan sebagai kolom biasa.
- *  - Pembeli: verifikasi dasar cukup sebelum membayar.
- * Header x-actor-id TIDAK boleh dipakai di produksi.
+ * PRODUCTION: replace it with Sign-In With Solana (SIWS) plus attestation
+ * verification. The recommended model:
+ *  - A Solana wallet is the identity (a nonce challenge is signed).
+ *  - Seller/workshop business verification (KYB) is issued as an attestation
+ *    (e.g. Solana Attestation Service or a licensed attestation issuer),
+ *    not stored as an ordinary column.
+ *  - Buyers need only basic verification before paying.
+ * The x-actor-id header must NEVER be used in production.
  */
 export function actorIdFromRequest(headerValue: string | undefined): string | null {
   return headerValue && headerValue.trim().length > 0 ? headerValue.trim() : null;
 }
 
 /**
- * Waktu simulasi KHUSUS DATA DEMO.
+ * Simulated clock for DEMO DATA ONLY.
  *
- * Data demo yang di-seed dalam hitungan detik membuat metrik waktu (mis. median
- * waktu sampai laporan) selalu 0 jam. Header `x-demo-backdate-hours` menggeser
- * waktu event supaya metrik demo masuk akal. Header ini DIABAIKAN saat
- * VIN_DEMO_MODE=false, dan di produksi waktu event selalu waktu server.
+ * Demo data seeded within seconds makes time-based metrics (e.g. median hours to
+ * report) always read as 0 hours. The `x-demo-backdate-hours` header shifts
+ * event timestamps so demo metrics make sense. It is IGNORED when
+ * VIN_DEMO_MODE=false, and in production event time is always server time.
  */
 export function demoBackdate(headerValue: string | undefined, now: () => string): string | null {
   if (process.env.VIN_DEMO_MODE === 'false') return null;

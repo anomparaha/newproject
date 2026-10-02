@@ -1,16 +1,16 @@
 /**
- * Abstraksi escrow.
+ * Escrow abstraction.
  *
- * Kontrak yang tidak boleh dilanggar implementasi mana pun:
- *  - Dana kendaraan dan dana inspeksi BERBEDA escrow (leg terpisah).
- *  - Dana kendaraan hanya lepas setelah syarat serah terima terpenuhi.
- *  - Dana inspeksi hanya lepas setelah laporan lengkap & memenuhi standar.
- *  - Sengketa membekukan escrow dan nota.
+ * Contract that every implementation must honour:
+ *  - Vehicle funds and inspection funds live in SEPARATE escrows (legs).
+ *  - Vehicle funds release only after handover conditions are met.
+ *  - Inspection funds release only after a complete report that meets the standard.
+ *  - A dispute freezes both the escrow and the receipt.
  *
- * Urutan implementasi yang direkomendasikan:
- *  MVP   -> MockEscrowProvider + penyedia pembayaran berizin (rekening bersama/PJP)
- *  Skala -> AnchorEscrowProvider (program Solana, vault PDA, USDC) untuk dana
- *           lintas negara + penyedia fiat berizin untuk on/off-ramp lokal.
+ * Recommended implementation order:
+ *  MVP   -> MockEscrowProvider plus a licensed payment provider (escrow account/PSP)
+ *  Scale -> AnchorEscrowProvider (Solana program, PDA vault, USDC) for cross-border
+ *           funds, plus a licensed fiat provider for local on/off-ramp.
  */
 
 import type {
@@ -46,13 +46,13 @@ export interface EscrowProvider {
     releaseTerms: ReleaseTerms;
   }): Promise<Escrow>;
   fund(escrowId: string, payerRef: string): Promise<FundResult>;
-  /** Pelepasan hanya boleh dijalankan setelah semua syarat terbukti di event log. */
+  /** Release may only run once every condition is proven in the event log. */
   release(escrowId: string, opts: { recipientRef: string; evidenceEventIds: string[] }): Promise<ReleaseResult>;
   freeze(escrowId: string, reason: string): Promise<{ escrowId: string; status: EscrowStatus; txRef: string }>;
-  /** Potongan jaminan masuk KAS SENGKETA, bukan dompet tim. */
+  /** A slashed bond goes to the DISPUTE FUND, never to the team wallet. */
   slash(escrowId: string, amount: string, rateToDisputeFundBps: number): Promise<ReleaseResult>;
   refund(escrowId: string, reason: string): Promise<ReleaseResult>;
-  /** Putusan arbitrase "split": sebagian kembali ke pembeli, sebagian ke penjual. */
+  /** "Split" arbitration award: part back to the buyer, part to the seller. */
   partialRelease(
     escrowId: string,
     parts: { toBuyer: string; toSeller: string },
@@ -60,15 +60,15 @@ export interface EscrowProvider {
   ): Promise<ReleaseResult & { toBuyer: string; toSeller: string }>;
 
   /**
-   * Pemindahan dana BERDASARKAN PUTUSAN ARBITRASE.
+   * Funds movement BASED ON AN ARBITRATION AWARD.
    *
-   * Ini satu-satunya jalur yang boleh memindahkan dana dari escrow yang sudah
-   * dibekukan - dan hanya setelah arbiter memutuskan. Pada program Anchor,
-   * padanannya adalah `resolve_dispute` yang mentransfer dari vault beku.
+   * This is the only path allowed to move money out of a frozen escrow, and only
+   * after the arbiter has ruled. In the Anchor program its counterpart is
+   * `resolve_dispute`, which transfers from the frozen vault.
    *
-   * `toCounterparty` adalah penjual (leg kendaraan) atau bengkel (leg inspeksi).
-   * Sisa yang tidak dibayarkan ke counterparty otomatis kembali ke pembeli,
-   * sehingga tidak ada dana tersangkut.
+   * `toCounterparty` is the seller (vehicle leg) or the workshop (inspection
+   * leg). Whatever is not paid to the counterparty goes back to the buyer, so no
+   * funds are ever left stranded.
    */
   resolveByArbitration(
     escrowId: string,
@@ -85,14 +85,14 @@ export function sameCurrency(a: string, b: string): boolean {
   return a.toUpperCase() === b.toUpperCase();
 }
 
-/** Default syarat pelepasan per leg, dipakai saat deal dikunci. */
+/** Default release terms per leg, used when a deal is locked. */
 export function defaultReleaseTerms(input: {
   handoverTerms: string;
 }): ReleaseTerms {
   const terms = input.handoverTerms.toLowerCase();
   const vehicle: ReleaseTerms['vehicle'] = [];
-  if (terms.includes('lokasi') || terms.includes('serah di')) vehicle.push('handover_location_confirmed');
-  if (terms.includes('muat') || terms.includes('load')) vehicle.push('load_proof');
+  if (terms.includes('location') || terms.includes('handover at')) vehicle.push('handover_location_confirmed');
+  if (terms.includes('load') || terms.includes('cargo')) vehicle.push('load_proof');
   if (vehicle.length === 0) vehicle.push('mutual_confirmation');
   return {
     vehicle,

@@ -2,10 +2,10 @@
  * Implementasi escrow.
  *
  * MVP: MockEscrowProvider - meniru ledger escrow (rekening bersama / PJP berizin).
- * Skala: AnchorEscrowProvider - program Solana (Rust + Anchor) dengan vault PDA dan USDC.
+ * Scale: AnchorEscrowProvider - a Solana program (Rust + Anchor) with PDA vaults and USDC.
  *
- * Keduanya memenuhi kontrak `EscrowProvider` yang sama sehingga logika deal tidak
- * perlu berubah saat pindah ke on-chain.
+ * Both honour the same `EscrowProvider` contract, so deal logic does not change
+ * when the system moves on-chain.
  */
 
 import type { DatabaseSync } from 'node:sqlite';
@@ -77,7 +77,7 @@ export class MockEscrowProvider implements EscrowProvider {
 
   async fund(escrowId: string, payerRef: string): Promise<{ escrowId: string; status: EscrowStatus; txRef: string; fundedAt: string }> {
     const escrow = this.findById(escrowId);
-    if (!escrow) throw new Error(`Escrow ${escrowId} tidak ditemukan`);
+    if (!escrow) throw new Error(`Escrow ${escrowId} not found`);
     if (escrow.status === 'funded') {
       return { escrowId, status: 'funded', txRef: escrow.txRef ?? '', fundedAt: escrow.fundedAt ?? nowIso() };
     }
@@ -97,10 +97,10 @@ export class MockEscrowProvider implements EscrowProvider {
     opts: { recipientRef: string; evidenceEventIds: string[] },
   ): Promise<{ escrowId: string; status: EscrowStatus; txRef: string; releasedAt: string }> {
     const escrow = this.findById(escrowId);
-    if (!escrow) throw new Error(`Escrow ${escrowId} tidak ditemukan`);
-    if (escrow.status === 'frozen') throw new Error('Escrow dibekukan: keputusan arbitrase diperlukan.');
+    if (!escrow) throw new Error(`Escrow ${escrowId} not found`);
+    if (escrow.status === 'frozen') throw new Error('Escrow is frozen: an arbitration ruling is required.');
     if (opts.evidenceEventIds.length === 0) {
-      throw new Error('Pelepasan dana wajib merujuk bukti event (tanpa bukti, dana tidak cair).');
+      throw new Error('A release must reference evidence events (without evidence, funds do not move).');
     }
     const txRef = `mock_tx_release_${newId('x')}`;
     const releasedAt = nowIso();
@@ -147,7 +147,7 @@ export class MockEscrowProvider implements EscrowProvider {
       null,
       'escrow',
       escrowId,
-      JSON.stringify({ amount, rateToDisputeFundBps, note: 'Potongan masuk kas sengketa, bukan dompet tim.' }),
+      JSON.stringify({ amount, rateToDisputeFundBps, note: 'Slashed funds go to the dispute fund, not the team wallet.' }),
       nowIso(),
     ]);
     return { escrowId, status: 'slashed', txRef, releasedAt };
@@ -180,7 +180,7 @@ export class MockEscrowProvider implements EscrowProvider {
     evidenceEventIds: string[],
   ): Promise<{ escrowId: string; status: EscrowStatus; txRef: string; releasedAt: string; toBuyer: string; toSeller: string }> {
     if (evidenceEventIds.length === 0) {
-      throw new Error('Pelepasan sebagian wajib merujuk bukti event.');
+      throw new Error('A partial release must reference evidence events.');
     }
     const txRef = `mock_tx_split_${newId('x')}`;
     const releasedAt = nowIso();
@@ -203,26 +203,26 @@ export class MockEscrowProvider implements EscrowProvider {
   }
 
   /**
-   * Pindahkan dana dari escrow yang (mungkin) sedang DIBEKUKAN, atas dasar
-   * putusan arbitrase. Meniru `resolve_dispute` pada program Anchor.
+   * Move funds out of an escrow that may still be FROZEN, based on an
+   * arbitration ruling. Mirrors `resolve_dispute` in the Anchor program.
    */
   async resolveByArbitration(
     escrowId: string,
     input: { decision: DisputeOutcome; toBuyer: string; toCounterparty: string; evidenceEventIds: string[] },
   ): Promise<{ escrowId: string; status: EscrowStatus; txRef: string; releasedAt: string; toBuyer: string; toCounterparty: string }> {
     const escrow = this.findById(escrowId);
-    if (!escrow) throw new Error(`Escrow ${escrowId} tidak ditemukan`);
+    if (!escrow) throw new Error(`Escrow ${escrowId} not found`);
     if (escrow.status === 'released' || escrow.status === 'refunded' || escrow.status === 'partially_released') {
-      throw new Error('Escrow sudah diselesaikan; putusan arbitrase tidak bisa dijalankan dua kali.');
+      throw new Error('This escrow is already settled; an arbitration ruling cannot run twice.');
     }
     if (input.evidenceEventIds.length === 0) {
-      throw new Error('Putusan arbitrase wajib merujuk bukti event.');
+      throw new Error('An arbitration ruling must reference evidence events.');
     }
     const toBuyer = Number(input.toBuyer);
     const toCounterparty = Number(input.toCounterparty);
     const amount = Number(escrow.amount);
     if (toBuyer + toCounterparty > amount) {
-      throw new Error('Putusan melebihi jumlah yang ada di escrow (dana tidak boleh diciptakan).');
+      throw new Error('The ruling exceeds the escrow balance (money cannot be created).');
     }
     const status: EscrowStatus =
       toBuyer > 0 && toCounterparty > 0 ? 'partially_released' : toCounterparty > 0 ? 'released' : 'refunded';
@@ -250,8 +250,8 @@ export class MockEscrowProvider implements EscrowProvider {
           leg: escrow.leg,
           note:
             escrow.leg === 'inspection'
-              ? 'Bengkel dibayar bila laporan sudah diunggah; sisanya kembali ke pembeli.'
-              : 'Leg kendaraan mengikuti putusan arbiter.',
+              ? 'The workshop is paid once a report was uploaded; the remainder goes back to the buyer.'
+              : 'The vehicle leg follows the arbiter ruling.',
         }),
         releasedAt,
       ],
@@ -277,9 +277,9 @@ export class MockEscrowProvider implements EscrowProvider {
 }
 
 /**
- * Stub program on-chain. Aktifkan setelah `programs/vin_anchor` di-deploy dan
- * `VIN_ESCROW_PROGRAM_ID` diset. Belum ada implementasi agar tidak ada klaim palsu
- * tentang dana yang benar-benar on-chain.
+ * On-chain program stub. Enable it after `programs/vin_anchor` is deployed and
+ * `VIN_ESCROW_PROGRAM_ID` is set. There is no implementation yet on purpose, so
+ * nobody can falsely claim funds really sit on-chain.
  */
 export class AnchorEscrowProvider implements EscrowProvider {
   readonly kind: EscrowProviderKind = 'anchor_solana';
@@ -288,9 +288,9 @@ export class AnchorEscrowProvider implements EscrowProvider {
 
   private notReady(): never {
     throw new Error(
-      `AnchorEscrowProvider belum diaktifkan (rpc=${this.rpcUrl}, program=${this.programId}). ` +
-        'Jalankan: anchor build && anchor deploy, lalu set VIN_ESCROW_PROGRAM_ID. ' +
-        'Sampai itu terjadi, dana TIDAK boleh diklaim on-chain.',
+      `AnchorEscrowProvider is not enabled yet (rpc=${this.rpcUrl}, program=${this.programId}). ` +
+        'Run: anchor build && anchor deploy, then set VIN_ESCROW_PROGRAM_ID. ' +
+        'Until then, funds must NOT be described as on-chain.',
     );
   }
 

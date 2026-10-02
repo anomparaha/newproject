@@ -43,7 +43,7 @@ export function PersonaProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
-        /* backend belum jalan: biarkan kosong */
+        /* API is not running yet: leave the list empty */
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -79,7 +79,7 @@ export function PersonaPicker() {
   return (
     <div className="rounded-xl border border-ink-700 bg-ink-900/60 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[0.68rem] uppercase tracking-wider text-mist-400">Persona demo</span>
+        <span className="text-[0.68rem] uppercase tracking-wider text-mist-400">Demo persona</span>
         {actor ? (
           <span className="chip text-signal border-signal/40">{ROLE_LABEL[actor.role] ?? actor.role}</span>
         ) : null}
@@ -88,9 +88,11 @@ export function PersonaPicker() {
         value={actorId ?? ''}
         disabled={loading || actors.length === 0}
         onChange={(event) => setActorId(event.target.value || null)}
-        aria-label="Pilih persona"
+        aria-label="Select persona"
       >
-        <option value="">{loading ? 'Memuat…' : actors.length === 0 ? 'Backend belum berjalan' : 'Pilih aktor…'}</option>
+        <option value="">
+          {loading ? 'Loading…' : actors.length === 0 ? 'Backend not running' : 'Select an actor…'}
+        </option>
         {actors.map((a) => (
           <option key={a.id} value={a.id}>
             {a.displayName} — {ROLE_LABEL[a.role] ?? a.role}
@@ -99,8 +101,8 @@ export function PersonaPicker() {
       </select>
       <p className="mt-2 text-[0.68rem] leading-relaxed text-mist-400">
         {demoMode
-          ? 'Aksi tombol dikirim dengan header x-actor-id sesuai persona. Di produksi, identitas memakai Sign-In With Solana + attestation.'
-          : 'Mode demo dimatikan.'}
+          ? 'Button actions carry the x-actor-id header for the selected persona. In production, identity comes from Sign-In With Solana plus attestation.'
+          : 'Demo mode is off.'}
       </p>
     </div>
   );

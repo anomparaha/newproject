@@ -1,9 +1,9 @@
 /**
  * Basis data MVP memakai `node:sqlite` (bawaan Node 22), sehingga:
- *  - tidak ada server basis data yang perlu dijalankan untuk meluncur ke Solana/Vercel,
+ *  - no database server needs to run just to ship to Solana/Vercel,
  *  - mudah diganti ke Postgres di produksi (skema sengaja dibuat portabel).
  *
- * Aturan skema: `events` bersifat APPEND-ONLY. Tidak ada UPDATE/DELETE ke tabel itu.
+ * Schema rule: `events` is APPEND-ONLY. No UPDATE or DELETE ever touches that table.
  */
 
 import { DatabaseSync } from 'node:sqlite';
@@ -31,8 +31,8 @@ export function openDb(path = dbPath()): DatabaseSync {
 }
 
 /**
- * Koridor pilot ditulis idempoten saat basis data dibuka, supaya listing yang
- * dibuat sebelum koridor terdaftar tetap punya rujukan yang sah.
+ * The pilot corridor is written idempotently when the database opens, so listings
+ * created before the corridor existed still have a valid reference.
  */
 function ensureDefaultCorridor(db: DatabaseSync): void {
   const exists = db.prepare('SELECT id FROM corridors WHERE id = ?').get(PILOT_CORRIDOR.id);
@@ -125,7 +125,7 @@ export function migrate(db: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_deals_vin ON deals(vin);
 
-    -- APPEND-ONLY. Event lama tidak pernah ditimpa.
+    -- APPEND-ONLY. Old events are never overwritten.
     CREATE TABLE IF NOT EXISTS events (
       id TEXT PRIMARY KEY,
       vin TEXT NOT NULL,

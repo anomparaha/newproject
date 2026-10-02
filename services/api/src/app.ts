@@ -38,12 +38,12 @@ export function createApp(db: DatabaseSync): Hono {
     c.json({
       name: 'VIN API',
       docs: '/api/meta/policy',
-      note: 'Uang kendaraan tidak lewat token volatil. NFT hanya nota dan jejak klaim. Token hanya jaminan dan akses.',
+      note: 'Vehicle money never travels through a volatile token. The NFT is a receipt and a claim trail. The token is collateral and access.',
     }),
   );
 
   app.notFound((c) =>
-    c.json({ error: { code: 'NOT_FOUND', message: `Tidak ada rute ${c.req.method} ${c.req.path}` } }, 404),
+    c.json({ error: { code: 'NOT_FOUND', message: `No route ${c.req.method} ${c.req.path}` } }, 404),
   );
 
   app.onError((err, c) => {

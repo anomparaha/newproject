@@ -1,8 +1,8 @@
 /**
- * Event log append-only per VIN.
+ * Append-only event log per VIN.
  *
- * Satu VIN memiliki RANGKAIAN event, bukan satu berkas yang diedit.
- * Tidak ada fungsi di file ini yang boleh mengubah atau menghapus event lama.
+ * A VIN has an event CHAIN, not a file that gets edited. No function in this
+ * file may modify or delete an old event.
  */
 
 import type { DatabaseSync } from 'node:sqlite';
@@ -16,14 +16,14 @@ export interface AppendEventInput {
   payload?: EventPayload;
   actorId?: string | null;
   actorRole?: Role | null;
-  /** Ditulis setelah program Solana mengkonfirmasi anchor hash. */
+  /** Written after the Solana program confirms the hash anchor. */
   anchorSignature?: string | null;
   createdAt?: string;
 }
 
 export function appendEvent(db: DatabaseSync, input: AppendEventInput): VinEvent {
   const meta = EVENT_META[input.type];
-  if (!meta) throw new Error(`Tipe event tidak sah: ${input.type}`);
+  if (!meta) throw new Error(`Invalid event type: ${input.type}`);
 
   const row = get(db, 'SELECT COALESCE(MAX(seq), 0) AS max_seq FROM events WHERE vin = ?', [input.vin]);
   const seq = Number(row?.max_seq ?? 0) + 1;
@@ -61,8 +61,8 @@ export function appendEvent(db: DatabaseSync, input: AppendEventInput): VinEvent
     ],
   );
 
-  // Perbarui proyeksi listing hanya untuk keperluan tampilan pencarian.
-  // Proyeksi tidak menggantikan event: bila proyeksi rusak, bisa dibangun ulang.
+  // Update the listing projection for search display only. The projection never
+  // replaces events: if it breaks, it can be rebuilt from them.
   if (input.type === 'deal_committed') {
     run(db, 'UPDATE listings SET status = ?, updated_at = ? WHERE vin = ? AND status = ?', [
       'reserved',
@@ -110,8 +110,8 @@ export function eventsByType(db: DatabaseSync, vin: string, type: EventType): Vi
 }
 
 /**
- * Anomali kilometer: bila angka odometer lebih rendah dari catatan terakhir pada
- * VIN yang sama, sistem menandai anomali - bukan menolak otomatis.
+ * Odometer anomaly: when a reading is lower than the latest one on the same VIN,
+ * the system flags an anomaly - it never rejects automatically.
  */
 export function latestOdometer(db: DatabaseSync, vin: string): { km: number; eventId: string } | null {
   const rows = all(

@@ -1,9 +1,9 @@
 /**
- * Reputasi dihitung dari event, bukan dari input manual.
+ * Reputation is computed from events, never from manual input.
  *
- * Ranking pasar inspeksi TIDAK DIJUAL: urutan tampil berasal dari tingkat laporan
- * tepat waktu, tingkat sengketa, dan kelengkapan standar. Bengkel dengan sengketa
- * berulang keluar dari daftar.
+ * The inspection market ranking is NOT FOR SALE: display order comes from on-time
+ * report rate, dispute rate, and standard compliance. A workshop with repeated
+ * disputes drops off the list.
  */
 
 import type { DatabaseSync } from 'node:sqlite';

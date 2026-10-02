@@ -1,8 +1,8 @@
 name: Anchor (program Solana)
 
-# Terpisah dari CI Node karena membutuhkan toolchain Rust + Solana.
+# Separate from the Node CI because it needs the Rust + Solana toolchain.
 # Jalankan manual lewat "Run workflow" sampai program benar-benar dipakai,
-# supaya pipeline utama tetap cepat dan merahnya jelas berasal dari mana.
+# so the main pipeline stays fast and failures point at the right place.
 
 on:
   workflow_dispatch:
@@ -50,7 +50,7 @@ jobs:
       - name: Jalankan uji Anchor
         run: anchor test --skip-build
 
-      - name: Simpan IDL sebagai artefak
+      - name: Save the IDL as an artifact
         uses: actions/upload-artifact@v4
         with:
           name: vin-anchor-idl

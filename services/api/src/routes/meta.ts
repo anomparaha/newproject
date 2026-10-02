@@ -17,13 +17,13 @@ export function metaRoutes(ctx: AppContext): Hono {
     }),
   );
 
-  /** Semua kebijakan publik dalam satu tempat supaya bisa diaudit dan diuji. */
+  /** Every public policy in one place, so it can be audited and tested. */
   app.get('/meta/policy', (c) =>
     c.json({
       platform: 'VIN',
       whatItIs:
-        'Pasar kendaraan lintas negara: listing terkunci, dana di escrow, laporan inspeksi menempel ke nomor rangka, ' +
-        'deal selesai dicatat sebagai bukti digital yang tidak bisa ditimpa.',
+        'A cross-border vehicle market: listings lock to a chassis number, funds sit in escrow, inspection reports attach to the same number, ' +
+        'and completed deals are recorded as digital proof that cannot be overwritten.',
       moneyRule: DISCLAIMERS.moneyRule,
       disclaimers: DISCLAIMERS,
       fees: FEES,
@@ -39,7 +39,7 @@ export function metaRoutes(ctx: AppContext): Hono {
     }),
   );
 
-  /** Jaminan yang terkunci: satu-satunya "metrik token" yang kami klaim. */
+  /** Locked bonds: the only "token metric" we claim. */
   app.get('/metrics/token', (c) => {
     const lockedBonds = all(
       ctx.db,
@@ -68,8 +68,8 @@ export function metaRoutes(ctx: AppContext): Hono {
   });
 
   /**
-   * Daftar aktor demo untuk memilih persona di antarmuka.
-   * Matikan dengan VIN_DEMO_MODE=false di produksi - di produksi identitas
+   * Demo actors for selecting a persona in the interface.
+   * Turn it off with VIN_DEMO_MODE=false in production - there, identity
    * memakai Sign-In With Solana + attestation, bukan header x-actor-id.
    */
   app.get('/demo/actors', (c) => {
@@ -86,7 +86,7 @@ export function metaRoutes(ctx: AppContext): Hono {
         countryCode: String(r.country_code),
         verification: String(r.verification),
       })),
-      warning: 'Endpoint ini hanya untuk demo. Produksi memakai Sign-In With Solana dan attestation identitas.',
+      warning: 'This endpoint is for demos only. Production uses Sign-In With Solana and identity attestations.',
     });
   });
 

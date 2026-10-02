@@ -5,41 +5,41 @@ import { formatAmount } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 
 const BPS_LABEL: Record<string, string> = {
-  vehicleBps: 'Fee transaksi kendaraan (bps)',
-  inspectionBps: 'Fee aplikasi inspeksi (bps)',
-  tokenDiscountFactor: 'Faktor diskon fee bila dibayar token',
+  vehicleBps: 'Vehicle transaction fee (bps)',
+  inspectionBps: 'Inspection app fee (bps)',
+  tokenDiscountFactor: 'Fee discount factor when paid in token',
 };
 
 const BOND_LABEL: Record<string, string> = {
-  listingBondUsdc: 'Jaminan listing (USDC)',
-  inspectorBondUsdc: 'Jaminan bengkel (USDC)',
-  stablecoinAllowedBelowUsd: 'Jaminan boleh stablecoin bila di bawah (USD)',
-  slashRatio: 'Porsi jaminan terpotong saat pelanggaran',
+  listingBondUsdc: 'Listing bond (USDC)',
+  inspectorBondUsdc: 'Workshop bond (USDC)',
+  stablecoinAllowedBelowUsd: 'Stablecoin bond allowed below (USD)',
+  slashRatio: 'Share of the bond slashed on a violation',
 };
 
 export default async function PolicyPage() {
   const policy = await api.policy();
 
   if (!policy) {
-    return <Notice tone="warn" title="API belum berjalan">Jalankan <code>npm run dev:api</code>.</Notice>;
+    return <Notice tone="warn" title="API is not running">Run <code>npm run dev:api</code>.</Notice>;
   }
 
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Kebijakan & tahapan</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Policy & stages</h1>
         <p className="max-w-3xl text-sm leading-relaxed text-mist-400">{policy.whatItIs}</p>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Notice tone="info" title="Uang">{policy.moneyRule}</Notice>
-        <Notice tone="warn" title="NFT bukan surat kendaraan">{policy.disclaimers?.nftNotTitle}</Notice>
-        <Notice tone="danger" title="Token bukan saham">{policy.disclaimers?.tokenNotEquity}</Notice>
+        <Notice tone="info" title="Money">{policy.moneyRule}</Notice>
+        <Notice tone="warn" title="The NFT is not a title">{policy.disclaimers?.nftNotTitle}</Notice>
+        <Notice tone="danger" title="The token is not equity">{policy.disclaimers?.tokenNotEquity}</Notice>
       </div>
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="card p-4">
-          <h2 className="text-sm font-medium">Fee</h2>
+          <h2 className="text-sm font-medium">Fees</h2>
           <ul className="mt-3 space-y-2 text-sm">
             {Object.entries(policy.fees).map(([key, value]) => (
               <li key={key} className="flex items-start justify-between gap-3">
@@ -49,13 +49,13 @@ export default async function PolicyPage() {
             ))}
           </ul>
           <p className="mt-3 text-xs text-mist-400">
-            Yang tidak punya token tetap bisa membayar fee dengan stablecoin. Sebagian fee yang masuk sebagai token dapat
-            dibakar hanya jika fee itu benar-benar terkumpul dari pemakaian - tidak ada bakar terjadwal.
+            Actors without the token can still pay fees in stablecoin. Only the part of the fee that actually arrives as
+            the token can be burned, and only once it has been collected from real usage — there is no scheduled burn.
           </p>
         </div>
 
         <div className="card p-4">
-          <h2 className="text-sm font-medium">Jaminan</h2>
+          <h2 className="text-sm font-medium">Bonds</h2>
           <ul className="mt-3 space-y-2 text-sm">
             {Object.entries(policy.bonds).map(([key, value]) => (
               <li key={key} className="flex items-start justify-between gap-3">
@@ -65,13 +65,13 @@ export default async function PolicyPage() {
             ))}
           </ul>
           <p className="mt-3 text-xs text-mist-400">
-            Jaminan terpotong bila listing terbukti palsu, penjual menghilang, atau laporan tidak memenuhi standar. Potongan
-            masuk kas sengketa, bukan ke dompet tim.
+            A bond is slashed when a listing is proven fake, a seller disappears, or a report fails the standard. The
+            slashed amount goes to the dispute fund, never to the team wallet.
           </p>
         </div>
 
         <div className="card p-4">
-          <h2 className="text-sm font-medium">Token: tiga fungsi, tidak lebih</h2>
+          <h2 className="text-sm font-medium">The token: three functions, no more</h2>
           <ul className="mt-3 space-y-1 text-sm">
             {policy.token.functions.map((fn) => (
               <li key={fn} className="flex items-center gap-2">
@@ -79,7 +79,7 @@ export default async function PolicyPage() {
               </li>
             ))}
           </ul>
-          <div className="mt-3 text-xs uppercase tracking-wider text-mist-400">Tidak pernah</div>
+          <div className="mt-3 text-xs uppercase tracking-wider text-mist-400">Never</div>
           <ul className="mt-1 space-y-1 text-sm">
             {policy.token.neverDoes.map((fn) => (
               <li key={fn} className="flex items-center gap-2 text-mist-300">
@@ -92,18 +92,18 @@ export default async function PolicyPage() {
       </section>
 
       <section className="card p-4">
-        <h2 className="text-sm font-medium">Urutan sampai bisa dipublikasi</h2>
+        <h2 className="text-sm font-medium">Sequence before anything may be published</h2>
         <div className="mt-3 grid gap-3 lg:grid-cols-4">
           {policy.stages.map((stage) => (
             <div key={stage.id} className="rounded-lg border border-ink-700 p-3">
               <div className="text-sm font-medium">{stage.label}</div>
-              <div className="mt-2 text-[0.68rem] uppercase tracking-wider text-safe">boleh</div>
+              <div className="mt-2 text-[0.68rem] uppercase tracking-wider text-safe">allowed</div>
               <ul className="mt-1 space-y-1 text-xs text-mist-300">
                 {stage.allowed.map((item) => (
                   <li key={item}>· {item}</li>
                 ))}
               </ul>
-              <div className="mt-2 text-[0.68rem] uppercase tracking-wider text-alert">tidak boleh</div>
+              <div className="mt-2 text-[0.68rem] uppercase tracking-wider text-alert">not allowed</div>
               <ul className="mt-1 space-y-1 text-xs text-mist-400">
                 {stage.forbidden.map((item) => (
                   <li key={item}>· {item}</li>
@@ -116,9 +116,9 @@ export default async function PolicyPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="card p-4">
-          <h2 className="text-sm font-medium">Event yang sah</h2>
+          <h2 className="text-sm font-medium">Valid events</h2>
           <p className="mt-1 text-xs text-mist-400">
-            Event lama tidak ditimpa. Hanya event berikut yang boleh masuk ke rangkaian satu VIN.
+            Old events are never overwritten. Only the following events may enter a VIN's chain.
           </p>
           <ul className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
             {policy.eventTypes.map((event) => (
@@ -132,20 +132,20 @@ export default async function PolicyPage() {
 
         <div className="space-y-4">
           <div className="card p-4">
-            <h2 className="text-sm font-medium">Kontrol yang membuatnya sehat</h2>
+            <h2 className="text-sm font-medium">Controls that keep it healthy</h2>
             <ul className="mt-3 space-y-2 text-sm text-mist-300">
-              <li>Dana kendaraan tidak cair sebelum syarat serah terima.</li>
-              <li>Dana inspeksi tidak cair sebelum laporan lengkap.</li>
-              <li>Penjual tidak memilih inspektor.</li>
-              <li>Event lama tidak bisa diedit.</li>
-              <li>Anomali kilometer tetap terlihat.</li>
-              <li>Sengketa membekukan nota dan escrow.</li>
-              <li>Identitas penjual dan bengkel bisa dicabut.</li>
-              <li>Halaman kendaraan menulis bahwa catatan ini jejak klaim, bukan title.</li>
+              <li>Vehicle funds do not release before handover conditions are met.</li>
+              <li>Inspection funds do not release before a complete report.</li>
+              <li>The seller does not choose the inspector.</li>
+              <li>Old events cannot be edited.</li>
+              <li>Odometer anomalies stay visible.</li>
+              <li>A dispute freezes both the receipt and the escrow.</li>
+              <li>Seller and workshop identities can be revoked.</li>
+              <li>Every vehicle page states that this record is a claim trail, not a title.</li>
             </ul>
           </div>
           <div className="card p-4">
-            <h2 className="text-sm font-medium">Ambang pemicu berhenti perluasan</h2>
+            <h2 className="text-sm font-medium">Expansion halt thresholds</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {Object.entries(policy.haltThresholds).map(([key, value]) => (
                 <li key={key} className="flex justify-between gap-3">
@@ -155,7 +155,7 @@ export default async function PolicyPage() {
               ))}
             </ul>
           </div>
-          <Notice tone="warn" title="Laporan inspeksi">{policy.disclaimers?.reportNotWarranty}</Notice>
+          <Notice tone="warn" title="Inspection reports">{policy.disclaimers?.reportNotWarranty}</Notice>
         </div>
       </section>
     </div>

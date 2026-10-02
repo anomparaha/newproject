@@ -1,16 +1,16 @@
 /**
- * @vin/shared - tipe domain VIN
+ * @vin/shared — VIN domain types
  *
- * Aturan inti yang dipakai seluruh sistem (API, web, worker):
- *  1. Satu VIN memiliki RANGKAIAN EVENT. Event lama tidak pernah ditimpa.
- *  2. Uang kendaraan tidak pernah berupa token volatil. Hanya stablecoin / fiat.
- *  3. NFT hanya NOTA dan JEJAK KLAIM. NFT bukan surat kendaraan (bukan BPKB/title).
- *  4. Token platform hanya untuk JAMINAN dan AKSES. Token tidak membeli harga mobil,
- *     tidak memberi bagi hasil, dan tidak memberi hak suara atas pendapatan.
+ * Core rules used by every layer (API, web, workers):
+ *  1. A VIN has an event CHAIN. Old events are never overwritten.
+ *  2. Vehicle money is never a volatile token. Stablecoin or fiat only.
+ *  3. The NFT is a RECEIPT and a CLAIM TRAIL. It is not a vehicle title.
+ *  4. The platform token is for COLLATERAL and ACCESS. It does not buy vehicle
+ *     prices, pay revenue share, or grant governance over the company.
  */
 
 // ---------------------------------------------------------------------------
-// Aktor & peran
+// Actors and roles
 // ---------------------------------------------------------------------------
 
 export const ROLES = ['buyer', 'seller', 'inspector', 'curator', 'arbiter'] as const;
@@ -19,21 +19,21 @@ export type Role = (typeof ROLES)[number];
 export const VERIFICATION_LEVELS = ['none', 'basic', 'business_verified', 'suspended'] as const;
 export type VerificationLevel = (typeof VERIFICATION_LEVELS)[number];
 
-/** Satu akun = satu peran (konsep §3 "Pembukaan akun memisahkan peran"). */
+/** One account holds one role (concept §3 "account opening separates roles"). */
 export interface Actor {
   id: string;
   role: Role;
   displayName: string;
   email: string;
-  /** Dompet Solana (base58) - alamat PENERIMA pembayaran, bukan akun bursa. */
+  /** Solana wallet (base58) — the PAYOUT address, not an exchange account. */
   walletAddress: string | null;
   /**
-   * Alamat PENERIMA pembayaran (payout destination). Selalu dibayar dalam
-   * stablecoin/fiat. Menyimpan token tidak pernah menjadi syarat dibayar.
+   * Payout destination. Always paid in stablecoin or fiat. Holding the token is
+   * never a condition for getting paid.
    */
   payoutAddress: string | null;
   verification: VerificationLevel;
-  /** Untuk inspector: area jangkauan & lokasi basis. */
+  /** For inspectors: coverage area and base location. */
   countryCode: string;
   city: string | null;
   baseCurrency: string;
@@ -45,10 +45,10 @@ export interface Actor {
 // ---------------------------------------------------------------------------
 
 /**
- * VIN di platform !== VIN registrasi resmi.
- * Dua negara bisa memakai format rangka berbeda; keunikan di platform tidak
- * sama dengan keunikan di registrasi resmi. Karena itu setiap halaman
- * kendaraan wajib menampilkan peringatan ini (lihat `vinScopeNotice()`).
+ * The VIN used on the platform is not the official registration VIN. Two
+ * countries can use different chassis formats, so uniqueness inside the
+ * platform does not mean uniqueness in official registries. Every vehicle page
+ * must show this notice (see `vinScopeNotice()`).
  */
 export interface VinRecord {
   vin: string;
@@ -61,14 +61,14 @@ export interface VinRecord {
 
 export function vinScopeNotice(): string {
   return (
-    'VIN di VIN hanya unik di dalam platform. Format rangka berbeda antar negara, ' +
-    'dan keunikan on-chain tidak sama dengan keunikan registrasi resmi. ' +
-    'Catatan ini adalah jejak klaim dan transaksi, bukan title/BPKB.'
+    'A VIN is unique only inside the VIN platform. Chassis formats differ between countries, ' +
+    'and on-chain uniqueness is not the same as uniqueness in official registries. ' +
+    'This record is a claim and transaction trail, not a title.'
   );
 }
 
 // ---------------------------------------------------------------------------
-// Event - sumber kebenaran
+// Events — the source of truth
 // ---------------------------------------------------------------------------
 
 export const EVENT_TYPES = [
@@ -77,34 +77,34 @@ export const EVENT_TYPES = [
   'deal_committed',
   'report_uploaded',
   'odometer_anomaly',
-  'inspeksi_dana_lepas',
-  'kendaraan_dana_lepas',
+  'inspection_funds_released',
+  'vehicle_funds_released',
   'note_completed',
   'dispute_opened',
   'dispute_resolved',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
-/** Status yang bisa dipakai untuk memfilter feed, bukan pengganti event. */
-export const EVENT_CATEGORIES = ['kesepakatan', 'inspeksi', 'dana', 'nota', 'sengketa'] as const;
+/** Categories for filtering feeds, not a replacement for events. */
+export const EVENT_CATEGORIES = ['agreement', 'inspection', 'funds', 'note', 'dispute'] as const;
 export type EventCategory = (typeof EVENT_CATEGORIES)[number];
 
 export const EVENT_META: Record<EventType, { label: string; category: EventCategory }> = {
-  listing_created: { label: 'Listing dibuat', category: 'kesepakatan' },
-  listing_updated: { label: 'Listing diubah sebelum ada pembeli', category: 'kesepakatan' },
-  deal_committed: { label: 'Deal dikunci (dana masuk escrow)', category: 'kesepakatan' },
-  report_uploaded: { label: 'Laporan inspeksi diunggah', category: 'inspeksi' },
-  odometer_anomaly: { label: 'Anomali kilometer', category: 'inspeksi' },
-  inspeksi_dana_lepas: { label: 'Dana inspeksi lepas ke bengkel', category: 'dana' },
-  kendaraan_dana_lepas: { label: 'Dana kendaraan lepas ke penjual', category: 'dana' },
-  note_completed: { label: 'Nota selesai tercatat', category: 'nota' },
-  dispute_opened: { label: 'Sengketa dibuka', category: 'sengketa' },
-  dispute_resolved: { label: 'Sengketa diputus', category: 'sengketa' },
+  listing_created: { label: 'Listing created', category: 'agreement' },
+  listing_updated: { label: 'Listing updated before a buyer committed', category: 'agreement' },
+  deal_committed: { label: 'Deal locked (funds entered escrow)', category: 'agreement' },
+  report_uploaded: { label: 'Inspection report uploaded', category: 'inspection' },
+  odometer_anomaly: { label: 'Odometer anomaly', category: 'inspection' },
+  inspection_funds_released: { label: 'Inspection funds released to the workshop', category: 'funds' },
+  vehicle_funds_released: { label: 'Vehicle funds released to the seller', category: 'funds' },
+  note_completed: { label: 'Completion receipt recorded', category: 'note' },
+  dispute_opened: { label: 'Dispute opened', category: 'dispute' },
+  dispute_resolved: { label: 'Dispute resolved', category: 'dispute' },
 };
 
 /**
- * Keunikan yang dikunci di on-chain: hanya HASH. File mentah (foto, PDF laporan)
- * disimpan off-chain.
+ * Only HASHES are ever anchored on-chain. Raw files (photos, report PDFs) stay
+ * off-chain.
  */
 export interface EventPayload {
   // listing
@@ -112,7 +112,7 @@ export interface EventPayload {
   model?: string;
   year?: number;
   priceAmount?: string;
-  /** Kode mata uang bebas (USDC, IDR, USD, ...). Uang kendaraan selalu stablecoin atau fiat. */
+  /** Free-form currency code (USDC, IDR, USD, ...). Vehicle money is stablecoin or fiat only. */
   priceCurrency?: string;
   shippingTerms?: string;
   photoHashes?: string[];
@@ -124,7 +124,7 @@ export interface EventPayload {
   inspectionFeeCurrency?: string;
   inspectionDeadline?: string;
   escrowRef?: string;
-  // inspeksi
+  // inspection
   odometerKm?: number;
   inspectedAt?: string;
   inspectorId?: string;
@@ -136,20 +136,20 @@ export interface EventPayload {
     previousEventId: string;
     deltaKm: number;
   };
-  // dana
+  // funds
   amount?: string;
   currency?: string;
   platformFeeAmount?: string;
   recipientId?: string;
   payoutRef?: string;
-  // nota
-  /** Null selama NFT nota belum benar-benar dicetak. Tidak ada klaim sebelum ada aset. */
+  // receipt
+  /** Null while the receipt NFT has not really been minted. No claims before the asset exists. */
   noteAssetId?: string | null;
   noteMintAddress?: string | null;
   noteMetadataUri?: string;
   evidenceRoot?: string;
   escrowTxId?: string;
-  // sengketa
+  // dispute
   disputeId?: string;
   reason?: string;
   outcome?: DisputeOutcome;
@@ -173,19 +173,19 @@ export interface VinEvent {
   seq: number;
   type: EventType;
   category: EventCategory;
-  /** JOIN ke deal untuk memisahkan rangkaian event per transaksi. */
+  /** JOIN to a deal, to separate event chains per transaction. */
   dealId: string | null;
   payload: EventPayload;
-  /** Alamat Solana tempat hash anchor ditulis (opsional, setelah tahap publikasi). */
+  /** Solana slot/signature where the hash was anchored (optional, after the publication stage). */
   anchorSignature: string | null;
-  /** Siapa yang memicu. Selalu aktor, tidak pernah "sistem" tanpa jejak. */
+  /** Who triggered it. Always an actor, never an unattributed "system". */
   actorId: string | null;
   actorRole: Role | null;
   createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
-// Listing & deal
+// Listings and deals
 // ---------------------------------------------------------------------------
 
 export const LISTING_STATUSES = ['draft', 'listed', 'reserved', 'completed', 'cancelled', 'disputed'] as const;
@@ -230,7 +230,7 @@ export interface InspectionReport {
   inspectorId: string;
   odometerKm: number;
   inspectedAt: string;
-  /** File mentah off-chain; yang dikunci hanya hash. */
+  /** Raw file stays off-chain; only the hash is anchored. */
   reportHash: string;
   dashboardPhotoHash: string;
   conditionSummary: string;
@@ -251,12 +251,12 @@ export interface Deal {
   shippingPaidBy: 'buyer' | 'seller';
   shippingAmount: string;
   inspectionFeeAmount: string;
-  /** Escrow kendaraan dan escrow inspeksi dipisah. */
+  /** Vehicle escrow and inspection escrow are separate legs. */
   escrowRefVehicle: string | null;
   escrowRefInspection: string | null;
-  /** Dana inspeksi cair hanya setelah laporan lengkap & diterima pembeli. */
+  /** Inspection funds release only after a complete report the buyer accepted. */
   inspectionReleasedAt: string | null;
-  /** Dana kendaraan cair hanya setelah syarat serah terima terpenuhi. */
+  /** Vehicle funds release only after handover conditions are met. */
   vehicleReleasedAt: string | null;
   inspectionDeadline: string;
   handoverTerms: string;
@@ -308,7 +308,7 @@ export interface ReputationSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Escrow (abstraksi penyedia - DP / kustodian saat MVP, Anchor saat skala)
+// Escrow (provider abstraction — PSP/custodian in the MVP, Anchor at scale)
 // ---------------------------------------------------------------------------
 
 export const ESCROW_LEGS = ['vehicle', 'inspection'] as const;
@@ -347,26 +347,22 @@ export interface Escrow {
 }
 
 // ---------------------------------------------------------------------------
-// Token: jaminan & akses. Tidak ada fungsi lain.
+// Token: collateral and access. No other function.
 // ---------------------------------------------------------------------------
 
 export interface TokenUtility {
-  /** Tiga fungsi token - dan hanya tiga ini. */
-  functions: readonly ['jaminan_listing', 'potongan_fee', 'akses_kapasitas'];
-  neverDoes: readonly [
-    'membeli_harga_kendaraan',
-    'bagi_hasil_pendapatan',
-    'hak_suara_atas_perusahaan',
-  ];
+  /** Three token functions — and only these three. */
+  functions: readonly ['listing_bond', 'fee_discount', 'capacity_access'];
+  neverDoes: readonly ['buys_vehicle_price', 'revenue_share', 'company_governance'];
 }
 
 export const TOKEN_UTILITY: TokenUtility = {
-  functions: ['jaminan_listing', 'potongan_fee', 'akses_kapasitas'],
-  neverDoes: ['membeli_harga_kendaraan', 'bagi_hasil_pendapatan', 'hak_suara_atas_perusahaan'],
+  functions: ['listing_bond', 'fee_discount', 'capacity_access'],
+  neverDoes: ['buys_vehicle_price', 'revenue_share', 'company_governance'],
 };
 
 // ---------------------------------------------------------------------------
-// Koridor (koridor pertama sengaja sempit)
+// Corridors (the first corridor is deliberately narrow)
 // ---------------------------------------------------------------------------
 
 export interface Corridor {
@@ -388,13 +384,13 @@ export interface CorridorMetrics {
   unexplainedOdometerAnomalies: number;
   sellerReturnRate: number;
   inspectorReturnRate: number;
-  /** Pemicu berhenti perluasan (playbook §10). */
+  /** Expansion halt trigger (playbook §10). */
   expansionHalted: boolean;
   haltReasons: string[];
 }
 
 // ---------------------------------------------------------------------------
-// API DTO
+// API DTOs
 // ---------------------------------------------------------------------------
 
 export interface ApiError {

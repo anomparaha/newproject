@@ -9,9 +9,9 @@ const db = openDb();
 const app = createApp(db);
 
 serve({ fetch: app.fetch, port, hostname }, (info) => {
-  console.log(`[vin-api] mendengarkan di http://${hostname}:${info.port}`);
-  console.log('[vin-api] kebijakan: GET /api/meta/policy');
-  console.log('[vin-api] escrow: mock (stablecoin disimulasikan) - program Solana belum di-deploy');
+  console.log(`[vin-api] listening on http://${hostname}:${info.port}`);
+  console.log('[vin-api] policy: GET /api/meta/policy');
+  console.log('[vin-api] escrow: mock (stablecoin simulated) - the Solana program is not deployed yet');
 });
 
 const shutdown = () => {

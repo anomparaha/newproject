@@ -16,7 +16,7 @@ export function shortHash(value: string | null | undefined, lead = 8, tail = 6):
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return '-';
   const d = new Date(iso);
-  return new Intl.DateTimeFormat('id-ID', {
+  return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
     timeZone: 'UTC',
@@ -29,10 +29,10 @@ export function relative(iso: string | null | undefined): string {
   const hours = Math.round(diff / 3_600_000);
   if (Math.abs(hours) < 1) {
     const minutes = Math.round(diff / 60_000);
-    return `${minutes} menit lalu`;
+    return `${minutes} minutes ago`;
   }
-  if (Math.abs(hours) < 48) return `${hours} jam lalu`;
-  return `${Math.round(hours / 24)} hari lalu`;
+  if (Math.abs(hours) < 48) return `${hours} hours ago`;
+  return `${Math.round(hours / 24)} days ago`;
 }
 
 export function percent(value: number | null | undefined, digits = 0): string {
@@ -41,22 +41,22 @@ export function percent(value: number | null | undefined, digits = 0): string {
 }
 
 export const ROLE_LABEL: Record<string, string> = {
-  buyer: 'Pembeli',
-  seller: 'Penjual / Dealer',
-  inspector: 'Bengkel Inspeksi',
-  curator: 'Kurator Koridor',
+  buyer: 'Buyer',
+  seller: 'Seller / Dealer',
+  inspector: 'Inspection Workshop',
+  curator: 'Corridor Curator',
   arbiter: 'Arbiter',
 };
 
 export const STATE_LABEL: Record<string, string> = {
   draft: 'Draft',
-  escrow_pending: 'Escrow menunggu dana',
-  inspecting: 'Inspeksi berjalan',
-  inspection_accepted: 'Laporan diterima',
-  handover_pending: 'Menunggu pelepasan dana',
-  completed: 'Selesai',
-  frozen: 'Dibekukan (sengketa)',
-  cancelled: 'Dibatalkan',
+  escrow_pending: 'Escrow awaiting funds',
+  inspecting: 'Inspection in progress',
+  inspection_accepted: 'Report accepted',
+  handover_pending: 'Waiting for fund release',
+  completed: 'Completed',
+  frozen: 'Frozen (dispute)',
+  cancelled: 'Cancelled',
 };
 
 export const STATE_TONE: Record<string, string> = {
@@ -71,11 +71,11 @@ export const STATE_TONE: Record<string, string> = {
 };
 
 export const CATEGORY_TONE: Record<string, string> = {
-  kesepakatan: 'text-info border-info/40',
-  inspeksi: 'text-signal border-signal/40',
-  dana: 'text-safe border-safe/40',
-  nota: 'text-paper border-ink-600',
-  sengketa: 'text-alert border-alert/50',
+  agreement: 'text-info border-info/40',
+  inspection: 'text-signal border-signal/40',
+  funds: 'text-safe border-safe/40',
+  note: 'text-paper border-ink-600',
+  dispute: 'text-alert border-alert/50',
 };
 
 export function randomSha256(): string {

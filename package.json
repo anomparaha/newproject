@@ -2,7 +2,7 @@
   "name": "vin-market",
   "version": "0.1.0",
   "private": true,
-  "description": "VIN - pasar kendaraan lintas negara dengan escrow, inspeksi pihak ketiga, dan nota digital di Solana.",
+  "description": "VIN - a cross-border vehicle market with escrow, third-party inspection, and digital receipts on Solana.",
   "workspaces": [
     "packages/*",
     "services/*",

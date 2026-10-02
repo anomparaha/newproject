@@ -3,9 +3,9 @@ export * from './state.js';
 export * from './money.js';
 export * from './schema.js';
 export * from './escrow.js';
-// vault-spec mengekspor slashBondToDisputeFund (aksi ledger), berbeda dari
-// slashBond di money.ts yang hanya MENGHITUNG pembagian potongan jaminan.
+// vault-spec exports slashBondToDisputeFund (a ledger action), which is different
+// from slashBond in money.ts — that one only COMPUTES the slash split.
 export * from './vault-spec.js';
-// Aturan on-chain hasil rekonsiliasi spesifikasi lima-kontrak (urutan pemanggilan
-// yang sah + registry dengan anomali dihitung on-chain).
+// On-chain rules reconciled with the five-contract design spec (valid call order
+// plus a VIN registry that computes odometer anomalies on-chain).
 export * from './onchain-rules.js';

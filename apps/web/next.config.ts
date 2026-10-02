@@ -1,8 +1,8 @@
 import type { NextConfig } from 'next';
 
 /**
- * Frontend memanggil backend lewat rute relatif `/api/*` supaya tidak pernah
- * memanggil localhost dari browser. Rewrite ini diteruskan ke service API
+ * The frontend calls the backend through relative `/api/*` routes so it never
+ * calls localhost from the browser. This rewrite forwards to the API service
  * (di dev: http://127.0.0.1:8080; di produksi: URL internal platform).
  */
 const API_ORIGIN = process.env.VIN_API_URL ?? 'http://127.0.0.1:8080';

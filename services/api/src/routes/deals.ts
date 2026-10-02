@@ -46,15 +46,15 @@ function lockedBondTotal(db: AppContext['db'], actorId: string, purpose: string)
 }
 
 /**
- * Menyelesaikan LEG INSPEKSI saat sengketa diputus.
+ * Settles the INSPECTION LEG when a dispute is resolved.
  *
- * Aturan yang sama dengan `resolve_dispute` di program Anchor:
- *  - bila bengkel sudah mengunggah laporan, bengkel TETAP dibayar (mereka sudah
- *    bekerja) setelah fee platform dipotong;
- *  - bila belum ada laporan, dana inspeksi kembali ke pembeli.
+ * The same rule as `resolve_dispute` in the Anchor program:
+ *  - when the workshop already uploaded a report, the workshop is STILL paid
+ *    for the work, after the platform fee;
+ *  - when there is no report yet, the inspection funds return to the buyer.
  *
- * Tanpa langkah ini, dana inspeksi bisa tersangkut atau bengkel tidak dibayar
- * ketika sengketa tidak berpihak pada penjual.
+ * Without this step, inspection funds could be stranded or the workshop unpaid
+ * when a dispute does not go the way of the seller.
  */
 async function settleInspectionLeg(
   ctx: AppContext,
@@ -64,8 +64,8 @@ async function settleInspectionLeg(
 ): Promise<{ toInspector: string; toBuyer: string; currency: string }> {
   const currency = String(deal.inspection_fee_currency);
   const escrow = ctx.escrow.findById(String(deal.escrow_ref_inspection));
-  // Escrow bisa berstatus `frozen` karena sengketa; putusan arbiter justru
-  // satu-satunya jalur yang boleh memindahkan dana dari kondisi itu.
+  // The escrow may be `frozen` because of a dispute; the arbiter ruling is the
+  // only path allowed to move funds out of that state.
   if (!escrow || (escrow.status !== 'funded' && escrow.status !== 'frozen')) {
     return { toInspector: '0', toBuyer: '0', currency };
   }
@@ -76,7 +76,7 @@ async function settleInspectionLeg(
   if (report) {
     const fee = bpsFee(amount, FEES.inspectionBps, currency);
     const toInspector = fromMinorUnits(toMinorUnits(amount, currency) - toMinorUnits(fee, currency), currency);
-    // Leg inspeksi dibayarkan lewat jalur arbitrase karena escrow sedang beku.
+    // The inspection leg is paid through arbitration because the escrow is frozen.
     await ctx.escrow.resolveByArbitration(escrow.id, {
       decision: 'refund_buyer',
       toBuyer: '0',
@@ -92,7 +92,7 @@ async function settleInspectionLeg(
         arbiterId,
         'deal',
         dealId,
-        JSON.stringify({ toInspector, platformFee: fee, reason: 'laporan sudah diunggah sebelum sengketa' }),
+        JSON.stringify({ toInspector, platformFee: fee, reason: 'a report was uploaded before the dispute' }),
         nowIso(),
       ],
     );
@@ -113,46 +113,46 @@ export function dealRoutes(ctx: AppContext): Hono {
   const { db } = ctx;
 
   // -------------------------------------------------------------------------
-  // Pembeli mengunci deal
+  // The buyer locks the deal
   // -------------------------------------------------------------------------
   app.post('/listings/:id/deals', zValidator('json', zCommitDeal), async (c) => {
     const listingId = c.req.param('id');
     const input = c.req.valid('json');
     const listing = get(db, 'SELECT * FROM listings WHERE id = ?', [listingId]);
-    if (!listing) return c.json({ error: { code: 'NOT_FOUND', message: 'Listing tidak ditemukan' } }, 404);
+    if (!listing) return c.json({ error: { code: 'NOT_FOUND', message: 'Listing not found' } }, 404);
     if (String(listing.status) !== 'listed') {
       return c.json(
-        { error: { code: 'LISTING_ALREADY_RESERVED', message: 'Listing ini sudah dikunci pembeli lain atau sudah selesai.' } },
+        { error: { code: 'LISTING_ALREADY_RESERVED', message: 'This listing is already locked by another buyer or has completed.' } },
         409,
       );
     }
 
     const buyer = get(db, 'SELECT * FROM actors WHERE id = ?', [input.buyerId]);
     if (!buyer || buyer.role !== 'buyer') {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya akun pembeli yang boleh mengunci deal' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only a buyer account may lock a deal' } }, 403);
     }
     if (String(buyer.verification) === 'none') {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Pembeli perlu verifikasi dasar sebelum membayar' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'The buyer needs the basic verification level before paying' } }, 403);
     }
 
     const inspector = get(db, 'SELECT * FROM actors WHERE id = ?', [input.inspectorId]);
     if (!inspector || inspector.role !== 'inspector') {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'Bengkel inspeksi tidak ditemukan' } }, 404);
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Inspection workshop not found' } }, 404);
     }
     if (String(inspector.verification) !== 'business_verified') {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Bengkel belum lolos cek identitas' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'The workshop has not passed identity checks yet' } }, 403);
     }
     if (lockedBondTotal(db, input.inspectorId, 'inspection_capacity') <= 0) {
-      return c.json({ error: { code: 'BOND_REQUIRED', message: 'Bengkel belum mengunci jaminan kapasitas inspeksi' } }, 400);
+      return c.json({ error: { code: 'BOND_REQUIRED', message: 'The workshop has not locked an inspection capacity bond' } }, 400);
     }
-    // Penjual tidak boleh menunjuk inspektor untuk unitnya sendiri; bengkel
-    // terafiliasi dengan penjual diblokir dari order itu.
+    // A seller may not appoint an inspector for their own unit; workshops
+    // affiliated with the seller are blocked from that order.
     if (affiliateIds(db, String(listing.seller_id)).includes(input.inspectorId)) {
       return c.json(
         {
           error: {
             code: 'INSPECTOR_CONFLICT',
-            message: 'Bengkel ini terafiliasi dengan penjual dan diblokir dari order unit tersebut.',
+            message: 'This workshop is affiliated with the seller and blocked from that unit order.',
           },
         },
         403,
@@ -169,7 +169,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         : String(listing.price_amount);
 
     // Baris deal ditulis dulu (escrow merujuk deal_id), lalu escrow dibuat,
-    // lalu referensinya diperbarui. Urutan ini menghormati foreign key.
+    // then the references are updated. This order respects the foreign key.
     run(
       db,
       `INSERT INTO deals (id, listing_id, vin, buyer_id, seller_id, inspector_id, state, price_amount, price_currency,
@@ -197,7 +197,7 @@ export function dealRoutes(ctx: AppContext): Hono {
       ],
     );
 
-    // Dua escrow terpisah: dana kendaraan dan dana inspeksi tidak pernah dicampur.
+    // Two separate escrows: vehicle funds and inspection funds are never mixed.
     const vehicleEscrow = await ctx.escrow.createEscrow({
       dealId,
       leg: 'vehicle',
@@ -223,33 +223,33 @@ export function dealRoutes(ctx: AppContext): Hono {
       {
         deal: serializeDeal(get(db, 'SELECT * FROM deals WHERE id = ?', [dealId])!),
         escrows: ctx.escrow.listForDeal(dealId).map(publicEscrow),
-        next: `Pembeli mendanai escrow: POST /api/deals/${dealId}/fund`,
+        next: `The buyer funds the escrow: POST /api/deals/${dealId}/fund`,
         note:
-          'Harga kendaraan dan biaya inspeksi berada di escrow yang TERPISAH. ' +
-          'Dana kendaraan tidak cair sebelum syarat serah terima terpenuhi.',
+          'The vehicle price and the inspection fee sit in SEPARATE escrows. ' +
+          'Vehicle funds do not release before the handover terms are met.',
       },
       201,
     );
   });
 
   /**
-   * Konfirmasi pendanaan escrow (produksi: webhook dari penyedia pembayaran berizin).
-   * Event `deal_committed` ditulis SETELAH dana benar-benar masuk escrow.
+   * Confirm escrow funding (production: a webhook from a licensed payment provider).
+   * The `deal_committed` event is written AFTER the funds really enter escrow.
    */
   app.post('/deals/:id/fund', async (c) => {
     const dealId = c.req.param('id');
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     if (String(deal.state) !== 'escrow_pending') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: `Deal berstatus ${deal.state}, tidak bisa didanai ulang.` } }, 409);
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: `The deal is ${deal.state}; it cannot be funded again.` } }, 409);
     }
     const vehicle = ctx.escrow.findById(String(deal.escrow_ref_vehicle));
     const inspection = ctx.escrow.findById(String(deal.escrow_ref_inspection));
-    if (!vehicle || !inspection) return c.json({ error: { code: 'NOT_FOUND', message: 'Escrow tidak ditemukan' } }, 404);
+    if (!vehicle || !inspection) return c.json({ error: { code: 'NOT_FOUND', message: 'Escrow not found' } }, 404);
 
     const body = (await c.req.json().catch(() => ({}))) as { payerRef?: string };
     const payerRef = body.payerRef ?? String(deal.buyer_id);
-    // Waktu simulasi hanya berlaku di mode demo (lihat context.ts).
+    // The simulated clock only applies in demo mode (see context.ts).
     const backdated = demoBackdate(c.req.header('x-demo-backdate-hours'), nowIso);
     const v = await ctx.escrow.fund(vehicle.id, payerRef);
     const i = await ctx.escrow.fund(inspection.id, payerRef);
@@ -284,7 +284,7 @@ export function dealRoutes(ctx: AppContext): Hono {
       deal: serializeDeal(get(db, 'SELECT * FROM deals WHERE id = ?', [dealId])!),
       escrows: ctx.escrow.listForDeal(dealId).map(publicEscrow),
       event,
-      note: 'Deal dikunci. Listing yang sama tidak bisa dijual ke pembeli kedua selama escrow aktif.',
+      note: 'Deal locked. The same listing cannot be sold to a second buyer while the escrow is active.',
     });
   });
 
@@ -295,12 +295,12 @@ export function dealRoutes(ctx: AppContext): Hono {
     const dealId = c.req.param('id');
     const input = c.req.valid('json');
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     if (String(deal.state) !== 'inspecting') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: `Laporan tidak bisa diunggah pada status ${deal.state}` } }, 409);
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: `A report cannot be uploaded while the deal is ${deal.state}` } }, 409);
     }
     if (String(deal.inspector_id) !== input.inspectorId) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya bengkel yang dipilih pembeli yang boleh mengunggah laporan' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only the workshop chosen by the buyer may upload a report' } }, 403);
     }
     const standard = reportMeetsStandard(input.checklist as unknown as Record<string, boolean>);
     if (!standard.ok) {
@@ -308,7 +308,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         {
           error: {
             code: 'FORBIDDEN',
-            message: 'Laporan belum memenuhi standar minimum.',
+            message: 'The report does not meet the minimum standard yet.',
             details: { missing: standard.missing },
           },
         },
@@ -323,7 +323,7 @@ export function dealRoutes(ctx: AppContext): Hono {
 
     const reportId = newId('rpt');
     const createdAt = nowIso();
-    // Waktu simulasi demo: metrik durasi kerja bengkel jadi masuk akal.
+    // Demo clock: so workshop turnaround metrics make sense.
     const backdated = demoBackdate(c.req.header('x-demo-backdate-hours'), nowIso);
     run(
       db,
@@ -392,34 +392,34 @@ export function dealRoutes(ctx: AppContext): Hono {
           ? {
               flagged: true,
               message:
-                'Anomali kilometer bukan penolakan otomatis, tetapi peringatan yang WAJIB dilihat pembeli sebelum dana dilepas.',
+                'An odometer anomaly is not an automatic rejection; it is a warning the buyer MUST see before funds release.',
               previousOdometerKm: previousKm,
             }
           : { flagged: false },
-        offChainNote: 'File mentah disimpan off-chain. Yang dikunci hanya hash.',
+        offChainNote: 'Raw files stay off-chain. Only the hash is anchored.',
       },
       201,
     );
   });
 
-  /** Pembeli menerima laporan -> dana inspeksi lepas ke bengkel (setelah fee). */
+  /** The buyer accepts the report -> inspection funds release to the workshop (after the fee). */
   app.post('/deals/:id/reports/:reportId/accept', async (c) => {
     const dealId = c.req.param('id');
     const reportId = c.req.param('reportId');
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     if (String(deal.state) !== 'inspecting') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: `Tidak ada laporan menunggu pada status ${deal.state}` } }, 409);
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: `No report is pending while the deal is ${deal.state}` } }, 409);
     }
     const report = get(db, 'SELECT * FROM inspection_reports WHERE id = ? AND deal_id = ?', [reportId, dealId]);
-    if (!report) return c.json({ error: { code: 'NOT_FOUND', message: 'Laporan tidak ditemukan' } }, 404);
+    if (!report) return c.json({ error: { code: 'NOT_FOUND', message: 'Report not found' } }, 404);
 
     const body = (await c.req.json().catch(() => ({}))) as { buyerId?: string };
     const buyerId = body.buyerId ?? actorIdFromRequest(c.req.header('x-actor-id'));
     if (!buyerId || buyerId !== String(deal.buyer_id)) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya pembeli yang boleh menerima laporan' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only the buyer may accept the report' } }, 403);
     }
-    // Anomali kilometer wajib terlihat sebelum dana dilepas.
+    // An odometer anomaly must be seen before funds release.
     const anomalies = eventsForDeal(db, dealId).filter((e) => e.type === 'odometer_anomaly');
     const acknowledged = (body as { acknowledgeAnomaly?: boolean }).acknowledgeAnomaly === true;
     if (anomalies.length > 0 && !acknowledged) {
@@ -427,7 +427,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         {
           error: {
             code: 'FORBIDDEN',
-            message: 'Ada anomali kilometer pada VIN ini. Konfirmasi dulu bahwa peringatan sudah dibaca.',
+            message: 'This VIN has an odometer anomaly. Confirm first that the warning was read.',
             details: { anomalies: anomalies.map((a) => a.payload.anomaly) },
           },
         },
@@ -436,7 +436,7 @@ export function dealRoutes(ctx: AppContext): Hono {
     }
 
     const escrow = ctx.escrow.findById(String(deal.escrow_ref_inspection));
-    if (!escrow) return c.json({ error: { code: 'NOT_FOUND', message: 'Escrow inspeksi tidak ditemukan' } }, 404);
+    if (!escrow) return c.json({ error: { code: 'NOT_FOUND', message: 'Inspection escrow not found' } }, 404);
     const feeAmount = String(deal.inspection_fee_amount);
     const currency = String(deal.inspection_fee_currency);
     const platformFee = bpsFee(feeAmount, FEES.inspectionBps, currency);
@@ -449,7 +449,7 @@ export function dealRoutes(ctx: AppContext): Hono {
 
     const event = appendEvent(db, {
       vin: String(deal.vin),
-      type: 'inspeksi_dana_lepas',
+      type: 'inspection_funds_released',
       dealId,
       payload: {
         amount: feeAmount,
@@ -472,29 +472,29 @@ export function dealRoutes(ctx: AppContext): Hono {
       deal: serializeDeal(get(db, 'SELECT * FROM deals WHERE id = ?', [dealId])!),
       event,
       payout: { toInspector: subtract(feeAmount, platformFee, currency), platformFee, currency, txRef: release.txRef },
-      next: `Konfirmasi serah terima: POST /api/deals/${dealId}/handover`,
+      next: `Confirm handover: POST /api/deals/${dealId}/handover`,
     });
   });
 
   // -------------------------------------------------------------------------
-  // Serah terima & pelepasan dana kendaraan
+  // Handover and vehicle fund release
   // -------------------------------------------------------------------------
   app.post('/deals/:id/handover', zValidator('json', zConfirmHandover), (c) => {
     const dealId = c.req.param('id');
     const input = c.req.valid('json');
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     const state = String(deal.state);
     if (state === 'frozen') {
-      return c.json({ error: { code: 'DEAL_FROZEN', message: 'Deal dibekukan. Serah terima tidak bisa dikonfirmasi sampai arbitrase memutuskan.' } }, 409);
+      return c.json({ error: { code: 'DEAL_FROZEN', message: 'The deal is frozen. Handover cannot be confirmed until arbitration rules.' } }, 409);
     }
     if (state !== 'inspection_accepted' && state !== 'handover_pending' && state !== 'inspecting') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: `Konfirmasi serah terima tidak berlaku pada status ${state}` } }, 409);
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: `Handover confirmation does not apply while the deal is ${state}` } }, 409);
     }
     const actorId = input.actorId;
     const allowed = [String(deal.buyer_id), String(deal.seller_id)];
     if (!allowed.includes(actorId)) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya pembeli atau penjual yang boleh mengonfirmasi serah terima' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only the buyer or the seller may confirm handover' } }, 403);
     }
 
     const confirmed = json<string[]>(deal.handover_confirmed_by as string, []);
@@ -527,20 +527,20 @@ export function dealRoutes(ctx: AppContext): Hono {
       deal: serializeDeal(updated),
       readyForRelease: preconditions.ok,
       missing: preconditions.missing,
-      next: preconditions.ok ? `POST /api/deals/${dealId}/release-vehicle` : 'Menunggu konfirmasi pihak lain.',
+      next: preconditions.ok ? `POST /api/deals/${dealId}/release-vehicle` : 'Waiting for the other party to confirm.',
     });
   });
 
   /**
-   * Pelepasan dana kendaraan: hanya setelah syarat serah terima yang dikunci
-   * di awal terpenuhi. Nota selesai dicatat setelah dana lepas.
+   * Vehicle fund release: only after the handover terms locked at the start
+   * are met. The completion receipt is recorded after the funds release.
    */
   app.post('/deals/:id/release-vehicle', async (c) => {
     const dealId = c.req.param('id');
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     if (String(deal.state) !== 'handover_pending') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: `Status ${deal.state} belum siap untuk pelepasan dana kendaraan.` } }, 409);
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: `The deal is ${deal.state}; it is not ready for vehicle fund release.` } }, 409);
     }
     const disputeOpen = hasOpenDispute(db, dealId);
     const preconditions = vehicleReleasePreconditions({
@@ -555,7 +555,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         {
           error: {
             code: 'INVALID_TRANSITION',
-            message: 'Syarat serah terima belum terpenuhi. Dana kendaraan tidak boleh cair.',
+            message: 'The handover terms are not met yet. Vehicle funds must not release.',
             details: { missing: preconditions.missing },
           },
         },
@@ -564,7 +564,7 @@ export function dealRoutes(ctx: AppContext): Hono {
     }
 
     const escrow = ctx.escrow.findById(String(deal.escrow_ref_vehicle));
-    if (!escrow) return c.json({ error: { code: 'NOT_FOUND', message: 'Escrow kendaraan tidak ditemukan' } }, 404);
+    if (!escrow) return c.json({ error: { code: 'NOT_FOUND', message: 'Vehicle escrow not found' } }, 404);
     const priceAmount = String(deal.price_amount);
     const currency = String(deal.price_currency);
     const platformFee = bpsFee(priceAmount, FEES.vehicleBps, currency);
@@ -580,7 +580,7 @@ export function dealRoutes(ctx: AppContext): Hono {
 
     const releaseEvent = appendEvent(db, {
       vin: String(deal.vin),
-      type: 'kendaraan_dana_lepas',
+      type: 'vehicle_funds_released',
       dealId,
       payload: {
         amount: payoutToSeller,
@@ -599,7 +599,7 @@ export function dealRoutes(ctx: AppContext): Hono {
       dealId,
     ]);
 
-    // --- Nota selesai (NFT) ---
+    // --- Completion receipt (NFT) ---
     const listingRow = get(db, 'SELECT * FROM listings WHERE id = ?', [String(deal.listing_id)]);
     const photoHashes = listingRow ? json<string[]>(listingRow.photo_hashes as string, []) : [];
     const hashes = [
@@ -653,28 +653,28 @@ export function dealRoutes(ctx: AppContext): Hono {
       events: [releaseEvent, noteEvent],
       note: serializeNote(get(db, 'SELECT * FROM notes WHERE id = ?', [noteId])!),
       nftNote:
-        'NFT nota belum dicetak. Setelah program/metadata siap, nota ini dicetak sebagai Metaplex Core asset ' +
-        'ke dompet pembeli. NFT adalah nota dan jejak klaim, BUKAN surat kendaraan.',
+        'The receipt NFT is not minted yet. Once the program and metadata are ready it is minted as a Metaplex Core asset ' +
+        'to the buyer wallet. The NFT is a receipt and a claim trail, NOT a vehicle title.',
     });
   });
 
   // -------------------------------------------------------------------------
-  // Sengketa
+  // Disputes
   // -------------------------------------------------------------------------
   app.post('/deals/:id/disputes', zValidator('json', zOpenDispute), async (c) => {
     const dealId = c.req.param('id');
     const input = c.req.valid('json');
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     if (String(deal.state) === 'completed' || String(deal.state) === 'cancelled') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: 'Deal sudah selesai/dibatalkan.' } }, 409);
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: 'The deal is already completed or cancelled.' } }, 409);
     }
     const parties = [String(deal.buyer_id), String(deal.seller_id), String(deal.inspector_id)];
     if (!parties.includes(input.openedBy)) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya pihak dalam deal yang boleh membuka sengketa' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only a party to the deal may open a dispute' } }, 403);
     }
     const existing = get(db, 'SELECT * FROM disputes WHERE deal_id = ? AND state = ?', [dealId, 'open']);
-    if (existing) return c.json({ error: { code: 'INVALID_TRANSITION', message: 'Sudah ada sengketa terbuka untuk deal ini' } }, 409);
+    if (existing) return c.json({ error: { code: 'INVALID_TRANSITION', message: 'This deal already has an open dispute' } }, 409);
 
     const disputeId = newId('dsp');
     const openedAt = nowIso();
@@ -686,12 +686,12 @@ export function dealRoutes(ctx: AppContext): Hono {
       [disputeId, dealId, input.openedBy, input.reason, openedAt],
     );
 
-    // Sengketa membekukan nota dan escrow.
+    // A dispute freezes the receipt and the escrow.
     const escrows = ctx.escrow.listForDeal(dealId);
     const frozen: EscrowDto[] = [];
     for (const escrow of escrows) {
       if (escrow.status === 'funded') {
-        await ctx.escrow.freeze(escrow.id, `Sengketa ${disputeId} dibuka: ${input.reason.slice(0, 120)}`);
+        `Dispute ${disputeId} opened: ${input.reason.slice(0, 120)}`
         frozen.push(ctx.escrow.findById(escrow.id)!);
       } else {
         frozen.push(escrow);
@@ -712,7 +712,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         dispute: serializeDispute(get(db, 'SELECT * FROM disputes WHERE id = ?', [disputeId])!),
         escrows: frozen.map(publicEscrow),
         event,
-        note: 'Escrow dan nota dibekukan. Transfer nota tidak terjadi sebelum keputusan arbitrase.',
+        note: 'Escrow and receipt are frozen. No receipt transfer happens before the arbitration ruling.',
       },
       201,
     );
@@ -722,13 +722,13 @@ export function dealRoutes(ctx: AppContext): Hono {
     const disputeId = c.req.param('id');
     const input = c.req.valid('json');
     const dispute = get(db, 'SELECT * FROM disputes WHERE id = ?', [disputeId]);
-    if (!dispute) return c.json({ error: { code: 'NOT_FOUND', message: 'Sengketa tidak ditemukan' } }, 404);
+    if (!dispute) return c.json({ error: { code: 'NOT_FOUND', message: 'Dispute not found' } }, 404);
     if (String(dispute.state) !== 'open') {
-      return c.json({ error: { code: 'INVALID_TRANSITION', message: 'Sengketa sudah diputus' } }, 409);
+      message: 'The dispute is already resolved'
     }
     const arbiter = get(db, 'SELECT * FROM actors WHERE id = ?', [input.arbiterId]);
     if (!arbiter || arbiter.role !== 'arbiter') {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya arbiter yang boleh memutuskan sengketa' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only the arbiter may rule on a dispute' } }, 403);
     }
     const dealId = String(dispute.deal_id);
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId])!;
@@ -782,7 +782,7 @@ export function dealRoutes(ctx: AppContext): Hono {
       refundedAmount = toBuyer;
       releasedAmount = toSeller;
     } else {
-      // bond_slashed: penjual gagal menyerahkan unit -> pembeli kembali, jaminan terpotong.
+      // bond_slashed: the seller failed to hand over the unit -> buyer refunded, bond slashed.
       if (vehicleEscrow) {
         await ctx.escrow.resolveByArbitration(vehicleEscrow.id, {
           decision: 'bond_slashed',
@@ -802,7 +802,7 @@ export function dealRoutes(ctx: AppContext): Hono {
         bondSlashedAmount = breakdown.slashed;
         run(db, `UPDATE bonds SET state = 'slashed', settled_at = ?, reason = ? WHERE id = ?`, [
           nowIso(),
-          `Diputus dalam sengketa ${disputeId}: potongan masuk kas sengketa, bukan dompet tim.`,
+          `Settled in dispute ${disputeId}: the slashed amount goes to the dispute fund, not the team wallet.`,
           String(bond.id),
         ]);
         run(
@@ -840,7 +840,7 @@ export function dealRoutes(ctx: AppContext): Hono {
       ],
     );
 
-    // Jika deal kembali dipegang penjual, nota tidak ditransfer dan listing kembali tayang.
+    // If the deal goes back to the seller, no receipt transfers and the listing returns to live.
     if (finalState === 'cancelled') {
       run(db, 'UPDATE listings SET status = ?, updated_at = ? WHERE id = ?', ['listed', resolvedAt, String(deal.listing_id)]);
     } else {
@@ -867,7 +867,7 @@ export function dealRoutes(ctx: AppContext): Hono {
       actorRole: 'arbiter',
     });
 
-    // Jaminan listing dikembalikan bila deal bersih.
+    // The listing bond is returned after a clean deal.
     if (input.outcome === 'release_to_seller') {
       const bond = get(
         db,
@@ -911,7 +911,7 @@ export function dealRoutes(ctx: AppContext): Hono {
   app.get('/deals/:id', (c) => {
     const dealId = c.req.param('id');
     const deal = get(db, 'SELECT * FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     const reports = all(db, 'SELECT * FROM inspection_reports WHERE deal_id = ? ORDER BY created_at DESC', [dealId]).map(
       serializeReport,
     );
@@ -938,7 +938,7 @@ export function dealRoutes(ctx: AppContext): Hono {
   app.get('/deals/:id/escrows', (c) => {
     const dealId = c.req.param('id');
     const deal = get(db, 'SELECT id FROM deals WHERE id = ?', [dealId]);
-    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal tidak ditemukan' } }, 404);
+    if (!deal) return c.json({ error: { code: 'NOT_FOUND', message: 'Deal not found' } }, 404);
     return c.json({ escrows: ctx.escrow.listForDeal(dealId).map(publicEscrow) });
   });
 
@@ -963,10 +963,10 @@ export function dealRoutes(ctx: AppContext): Hono {
     return c.json({ notes: rows.map(serializeNote) });
   });
 
-  /** Metadata kompatibel Metaplex Core/DAS. Foto asli tidak ditaruh di chain. */
+  /** Metadata compatible with Metaplex Core/DAS. Raw photos never go on-chain. */
   app.get('/notes/:id/metadata', (c) => {
     const note = get(db, 'SELECT * FROM notes WHERE id = ?', [c.req.param('id')]);
-    if (!note) return c.json({ error: { code: 'NOT_FOUND', message: 'Nota tidak ditemukan' } }, 404);
+    if (!note) return c.json({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } }, 404);
     return c.json({
       name: `VIN Nota ${note.vin}`,
       symbol: 'VINNOTE',
@@ -988,8 +988,8 @@ export function dealRoutes(ctx: AppContext): Hono {
         files: [],
         creators: [],
         vin_notice:
-          'NFT ini adalah nota dan jejak klaim, bukan title/BPKB. Foto dan laporan mentah disimpan off-chain; ' +
-          'yang dikunci on-chain hanya hash.',
+          'This NFT is a receipt and a claim trail, not a title. Photos and raw reports stay off-chain; ' +
+          'only the hash is anchored on-chain.',
       },
     });
   });
@@ -1025,7 +1025,7 @@ function publicEscrow(escrow: EscrowDto) {
   };
 }
 
-/** Aritmetika uang memakai bilangan bulat terskala, bukan float. */
+/** Money arithmetic uses scaled integers, never floats. */
 function subtract(a: string, b: string, currency: string): string {
   return fromMinorUnits(toMinorUnits(a, currency) - toMinorUnits(b, currency), currency);
 }

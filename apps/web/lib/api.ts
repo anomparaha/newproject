@@ -1,6 +1,6 @@
 import type { Actor, Corridor, CorridorMetrics, Deal, Dispute, Escrow, InspectionReport, Listing, VinEvent } from '@vin/shared';
 
-/** Hanya dipakai di server (React Server Components). Browser selalu memakai rute relatif /api/*. */
+/** Server-side only (React Server Components). The browser always uses the relative /api/* routes. */
 const API_ORIGIN = process.env.VIN_API_URL ?? 'http://127.0.0.1:8080';
 
 async function apiGet<T>(path: string): Promise<T | null> {

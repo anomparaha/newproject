@@ -9,22 +9,22 @@ export default async function ListingsPage() {
   const data = await api.listings();
 
   if (!data) {
-    return <Notice tone="warn" title="API belum berjalan">Jalankan <code>npm run dev:api</code>.</Notice>;
+    return <Notice tone="warn" title="API is not running">Run <code>npm run dev:api</code>.</Notice>;
   }
 
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Listing</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Listings</h1>
         <p className="text-sm text-mist-400">
-          Listing mengunci merek, model, tahun, VIN, lokasi fisik, harga, syarat pengiriman, dan hash foto. Data ini belum
-          menjadi nota selesai.
+          A listing locks the make, model, year, VIN, physical location, price, shipping terms, and photo hashes. It is
+          not a completion receipt.
         </p>
       </header>
 
-      <Notice tone="info" title="Batas hukum">
-        VIN hanya unik di dalam platform. Format rangka berbeda antar negara, dan keunikan on-chain tidak sama dengan
-        keunikan registrasi resmi.
+      <Notice tone="info" title="Legal boundary">
+        A VIN is unique only inside the platform. Chassis formats differ between countries, and on-chain uniqueness is
+        not the same as uniqueness in official registries.
       </Notice>
 
       <div className="card overflow-x-auto">
@@ -33,9 +33,9 @@ export default async function ListingsPage() {
             <tr>
               <th>Unit</th>
               <th>VIN</th>
-              <th>Lokasi</th>
-              <th>Harga</th>
-              <th>Jaminan listing</th>
+              <th>Location</th>
+              <th>Price</th>
+              <th>Listing bond</th>
               <th>Status</th>
               <th />
             </tr>
@@ -47,7 +47,7 @@ export default async function ListingsPage() {
                   <div className="font-medium">
                     {listing.make} {listing.model}
                   </div>
-                  <div className="text-xs text-mist-400">{listing.year} · {listing.odometerKm?.toLocaleString('id-ID') ?? '-'} km</div>
+                  <div className="text-xs text-mist-400">{listing.year} · {listing.odometerKm?.toLocaleString('en-US') ?? '-'} km</div>
                 </td>
                 <td className="hash">{listing.vin}</td>
                 <td className="text-xs text-mist-300">{listing.location}</td>
@@ -62,7 +62,7 @@ export default async function ListingsPage() {
                       detail
                     </Link>
                     <Link href={`/vin/${listing.vin}`} className="text-mist-400 hover:text-paper">
-                      riwayat VIN
+                      VIN history
                     </Link>
                   </div>
                 </td>
@@ -71,7 +71,7 @@ export default async function ListingsPage() {
             {data.listings.length === 0 ? (
               <tr>
                 <td colSpan={7} className="text-mist-400">
-                  Belum ada listing. Jalankan <code>npm run seed:reset</code>.
+                  No listings yet. Run <code>npm run seed:reset</code>.
                 </td>
               </tr>
             ) : null}
@@ -80,10 +80,10 @@ export default async function ListingsPage() {
       </div>
 
       <section className="card p-4">
-        <h2 className="text-sm font-medium">Koridor yang dilayani</h2>
+        <h2 className="text-sm font-medium">Corridors served</h2>
         <p className="mt-1 text-xs text-mist-400">
-          Koridor pertama sengaja sempit: satu negara asal dengan data rangka relatif rapi, satu negara tujuan, nilai
-          kendaraan di atas ambang, inspeksi wajib.
+          The first corridor is deliberately narrow: one origin country with relatively tidy chassis data, one
+          destination country, vehicles above a value threshold, and mandatory inspection.
         </p>
         <div className="mt-3 space-y-2 text-sm">
           {data.corridor ? (
@@ -95,8 +95,8 @@ export default async function ListingsPage() {
                 <span className="chip text-safe border-safe/40">{data.corridor.status}</span>
               </div>
               <div className="mt-1 text-xs text-mist-300">
-                Ambang nilai USD {data.corridor.minVehiclePriceUsd.toLocaleString('id-ID')} · mata uang{' '}
-                {data.corridor.allowedCurrencies.join(', ')} · inspeksi wajib
+                Minimum value USD {data.corridor.minVehiclePriceUsd.toLocaleString('en-US')} · currencies{' '}
+                {data.corridor.allowedCurrencies.join(', ')} · mandatory inspection
               </div>
             </div>
           ) : null}
@@ -106,7 +106,7 @@ export default async function ListingsPage() {
                 <span>
                   {candidate.originCountry} → {candidate.destinationCountry}
                 </span>
-                <span className="chip text-mist-400">belum dilayani</span>
+                <span className="chip text-mist-400">not served yet</span>
               </div>
               <div className="mt-1 text-xs text-mist-400">{candidate.reason}</div>
             </div>

@@ -16,7 +16,7 @@ vin_anchor = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
 url = "https://api.apr.dev"
 
 [provider]
-# Ganti ke Helius/QuickNode untuk devnet & mainnet.
+# Switch to Helius/QuickNode for devnet and mainnet.
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 

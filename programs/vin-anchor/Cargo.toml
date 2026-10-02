@@ -1,7 +1,7 @@
 [package]
 name = "vin-anchor"
 version = "0.1.0"
-description = "VIN escrow, jaminan, dan registri nota. Nota bukan surat kendaraan."
+description = "VIN escrow, bonds, and receipt registry. A receipt is not a vehicle title."
 edition = "2021"
 
 [lib]
@@ -10,8 +10,8 @@ name = "vin_anchor"
 
 [features]
 default = []
-# CPI ke Metaplex Core untuk mencetak NFT nota. Nonaktif secara default supaya
-# build awal hanya bergantung pada anchor-lang + anchor-spl.
+# CPI to Metaplex Core for minting receipt NFTs. Off by default so the first
+# build depends only on anchor-lang + anchor-spl.
 metaplex-core = ["dep:mpl-core"]
 
 [dependencies]

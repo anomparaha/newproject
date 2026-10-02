@@ -1,13 +1,13 @@
 /**
- * Uji asap (smoke test) untuk CI.
+ * Smoke test for CI.
  *
- * Menjalankan API yang sama pada port sementara, lalu memeriksa janji-janji inti:
- *  - kebijakan publik bisa dibaca,
- *  - halaman VIN memuat rangkaian event,
- *  - dana kendaraan TIDAK bisa dilepas tanpa syarat serah terima,
- *  - nota hanya ada untuk deal selesai.
+ * It runs the same API on a temporary port and checks the core promises:
+ *  - public policy is readable,
+ *  - the VIN page loads the event chain,
+ *  - vehicle funds CANNOT be released without met handover terms,
+ *  - a receipt exists only for completed deals.
  *
- * Pakai: npm run smoke   (butuh data: npm run seed:reset)
+ * Usage: npm run smoke   (needs data: npm run seed:reset)
  */
 
 import { serve } from '@hono/node-server';
@@ -18,13 +18,13 @@ import { dbPath, openDb } from './db.js';
 import { createApp } from './app.js';
 
 /**
- * Uji asap berjalan di SALINAN basis data demo supaya data yang dipakai di layar
- * tidak ikut berubah karena pengujian.
+ * The smoke test runs on a COPY of the demo database so the data on screen
+ * are not changed by running tests.
  */
 function useTemporaryCopyOfDemoDb(): void {
   const source = dbPath();
   if (!existsSync(source)) {
-    console.log('[smoke] basis data belum ada; jalankan npm run seed:reset lebih dulu');
+    console.log('[smoke] the database does not exist yet; run npm run seed:reset first');
     process.exit(1);
   }
   const dir = mkdtempSync(join(tmpdir(), 'vin-smoke-'));
@@ -43,7 +43,7 @@ function check(name: string, condition: boolean, detail?: string): void {
     console.log(`  ok   ${name}`);
   } else {
     failures += 1;
-    console.log(`  GAGAL ${name}${detail ? ` — ${detail}` : ''}`);
+    console.log(`  FAIL ${name}${detail ? ` — ${detail}` : ''}`);
   }
 }
 
@@ -67,40 +67,40 @@ async function main(): Promise<void> {
 
   db.close();
   if (failures > 0) {
-    console.error(`\n[smoke] ${failures} pemeriksaan gagal`);
+    console.error(`\n[smoke] ${failures} checks failed`);
     process.exit(1);
   }
-  console.log('\n[smoke] semua pemeriksaan lolos');
+  console.log('\n[smoke] all checks passed');
 }
 
 async function runChecks(base: string): Promise<void> {
-  console.log('[smoke] memeriksa API VIN');
+  console.log('[smoke] checking the VIN API');
 
   const health = await fetch(`${base}/api/health`).then((r) => r.json() as Promise<Record<string, unknown>>);
-  check('health mengembalikan status ok', health.status === 'ok');
+  check('health returns ok', health.status === 'ok');
 
   const policy = await fetch(`${base}/api/meta/policy`).then((r) => r.json() as Promise<Record<string, any>>);
-  check('kebijakan memuat tiga fungsi token', policy.token?.functions?.length === 3);
+  check('policy lists three token functions', policy.token?.functions?.length === 3);
   check(
-    'token tidak pernah membeli harga kendaraan',
-    policy.token?.neverDoes?.includes('membeli_harga_kendaraan') === true,
+    'the token never buys a vehicle price',
+    policy.token?.neverDoes?.includes('buys_vehicle_price') === true,
   );
-  check('uang kendaraan hanya stablecoin/fiat', typeof policy.moneyRule === 'string' && policy.moneyRule.length > 20);
-  check('taksonomi event berisi 10 tipe', policy.eventTypes?.length === 10);
+  check('vehicle money is stablecoin/fiat only', typeof policy.moneyRule === 'string' && policy.moneyRule.length > 20);
+  check('the event taxonomy lists 10 types', policy.eventTypes?.length === 10);
 
   const vin = await fetch(`${base}/api/vin/JTDKAMFU1M3123456`).then((r) => r.json() as Promise<Record<string, any>>);
-  check('halaman VIN memuat event', Array.isArray(vin.events) && vin.events.length > 0, `events=${vin.events?.length}`);
+  check('the VIN page loads events', Array.isArray(vin.events) && vin.events.length > 0, `events=${vin.events?.length}`);
   check(
-    'nomor urut event berurutan dari 1',
+    'event sequence numbers start at 1 and increase',
     Array.isArray(vin.events) && vin.events.every((e: { seq: number }, i: number) => e.seq === i + 1),
   );
-  check('halaman VIN menulis batas klaim', typeof vin.claimsBoundary === 'string' && vin.claimsBoundary.includes('bukan title'));
-  check('halaman VIN menulis batas keunikan', typeof vin.notice === 'string' && vin.notice.includes('unik'));
+  check('the VIN page states the claim boundary', typeof vin.claimsBoundary === 'string' && vin.claimsBoundary.includes('not a title'));
+  check('the VIN page states the uniqueness boundary', typeof vin.notice === 'string' && vin.notice.includes('unique'));
 
   const metrics = await fetch(`${base}/api/corridors/cor_id_sg/metrics`).then((r) => r.json() as Promise<Record<string, any>>);
-  check('metrik koridor bisa dibaca', typeof metrics.metrics?.dealsCompleted === 'number');
+  check('corridor metrics are readable', typeof metrics.metrics?.dealsCompleted === 'number');
   check(
-    'metrik memuat tiga angka publik',
+    'metrics include the three public numbers',
     typeof metrics.metrics?.dealsCompleted === 'number' &&
       typeof metrics.metrics?.disputeRate === 'number' &&
       'medianHoursToReport' in (metrics.metrics ?? {}),
@@ -108,10 +108,10 @@ async function runChecks(base: string): Promise<void> {
 
   const listings = await fetch(`${base}/api/listings`).then((r) => r.json() as Promise<Record<string, any>>);
   const listing = (listings.listings ?? []).find((l: { status: string }) => l.status === 'listed');
-  check('ada listing untuk diuji', Boolean(listing));
+  check('a listing exists to test with', Boolean(listing));
 
   if (listing) {
-    // Deal baru tanpa pendanaan: pelepasan dana harus ditolak.
+    // A new unfunded deal: fund release must be rejected.
     const actors = await fetch(`${base}/api/demo/actors`).then((r) => r.json() as Promise<Record<string, any>>);
     const buyer = actors.actors?.find((a: { role: string }) => a.role === 'buyer');
     const inspectors = await fetch(`${base}/api/inspectors?country=ID`).then((r) => r.json() as Promise<Record<string, any>>);
@@ -129,11 +129,11 @@ async function runChecks(base: string): Promise<void> {
           inspectionFeeAmount: '100',
           escrowCurrency: 'USDC',
           inspectionDeadlineHours: 48,
-          handoverTerms: 'Serah di lokasi; konfirmasi kedua pihak',
+          handoverTerms: 'Handover at location; confirmation by both parties',
         }),
       }).then((r) => r.json() as Promise<Record<string, any>>);
       const dealId = commit.deal?.id;
-      check('deal bisa dikunci pembeli', Boolean(dealId));
+      check('a buyer can lock a deal', Boolean(dealId));
 
       if (dealId) {
         const earlyRelease = await fetch(`${base}/api/deals/${dealId}/release-vehicle`, {
@@ -141,29 +141,29 @@ async function runChecks(base: string): Promise<void> {
           headers: { 'x-actor-id': buyer.id },
         });
         check(
-          'dana kendaraan ditolak sebelum syarat terpenuhi',
+          'vehicle funds are rejected before the terms are met',
           earlyRelease.status === 409,
           `status=${earlyRelease.status}`,
         );
 
         const escrows = await fetch(`${base}/api/deals/${dealId}/escrows`).then((r) => r.json() as Promise<Record<string, any>>);
-        check('dua escrow terpisah dibuat', escrows.escrows?.length === 2);
+        check('two separate escrows are created', escrows.escrows?.length === 2);
         check(
-          'leg escrow berbeda (vehicle & inspection)',
+          'the escrow legs differ (vehicle & inspection)',
           new Set((escrows.escrows ?? []).map((e: { leg: string }) => e.leg)).size === 2,
         );
       }
     } else {
-      check('ada pembeli & bengkel untuk uji deal', Boolean(buyer && inspector), 'jalankan npm run seed:reset');
+      check('a buyer and a workshop exist for the deal test', Boolean(buyer && inspector), 'run npm run seed:reset');
     }
   }
 
-  // Invarian yang sama dengan model ledger & program Anchor:
-  // deal yang sudah selesai/dibatalkan TIDAK BOLEH punya escrow yang masih
-  // menggantung (funded/frozen) - itu tanda dana tersangkut.
+  // The same invariants as the ledger model and the Anchor program:
+  // a completed/cancelled deal MUST NOT keep an escrow still
+  // hanging (funded/frozen) - that would mean stranded funds.
   const deals = await fetch(`${base}/api/deals`).then((r) => r.json() as Promise<Record<string, any>>);
   const settled = (deals.deals ?? []).filter((d: { state: string }) => d.state === 'completed' || d.state === 'cancelled');
-  check('ada deal yang sudah ditutup untuk diperiksa', settled.length > 0);
+  check('a settled deal exists to inspect', settled.length > 0);
 
   let stranded: string[] = [];
   let inspectionPaidInDispute = false;
@@ -178,18 +178,18 @@ async function runChecks(base: string): Promise<void> {
       }
     }
   }
-  check('tidak ada dana tersangkut di deal yang sudah ditutup', stranded.length === 0, stranded.join(', '));
-  check('bengkel tetap dibayar saat sengketa diputus (laporan sudah ada)', inspectionPaidInDispute);
+  check('no funds are stranded in settled deals', stranded.length === 0, stranded.join(', '));
+  check('the workshop is still paid when a dispute is resolved (a report exists)', inspectionPaidInDispute);
 
   const notes = await fetch(`${base}/api/notes`).then((r) => r.json() as Promise<Record<string, any>>);
-  check('ada nota untuk deal selesai', Array.isArray(notes.notes) && notes.notes.length > 0);
+  check('a receipt exists for a completed deal', Array.isArray(notes.notes) && notes.notes.length > 0);
   if (notes.notes?.length > 0) {
     const noteId = notes.notes[0].id;
     const metadata = await fetch(`${base}/api/notes/${noteId}/metadata`).then((r) => r.json() as Promise<Record<string, any>>);
-    check('metadata nota kompatibel Metaplex Core', Array.isArray(metadata.attributes) && typeof metadata.name === 'string');
+    check('receipt metadata is Metaplex Core compatible', Array.isArray(metadata.attributes) && typeof metadata.name === 'string');
     check(
-      'metadata nota menyatakan bukan surat kendaraan',
-      typeof metadata.properties?.vin_notice === 'string' && metadata.properties.vin_notice.includes('bukan title'),
+      'receipt metadata states it is not a vehicle title',
+      typeof metadata.properties?.vin_notice === 'string' && metadata.properties.vin_notice.includes('not a title'),
     );
   }
 }

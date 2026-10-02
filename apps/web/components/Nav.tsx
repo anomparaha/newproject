@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const LINKS = [
-  { href: '/', label: 'Dasbor' },
-  { href: '/listings', label: 'Listing' },
-  { href: '/inspectors', label: 'Pasar Inspeksi' },
-  { href: '/corridors', label: 'Koridor' },
-  { href: '/policy', label: 'Kebijakan & Tahapan' },
+  { href: '/', label: 'Dashboard' },
+  { href: '/listings', label: 'Listings' },
+  { href: '/inspectors', label: 'Inspection Market' },
+  { href: '/corridors', label: 'Corridors' },
+  { href: '/policy', label: 'Policy & Stages' },
 ];
 
 export function Nav() {

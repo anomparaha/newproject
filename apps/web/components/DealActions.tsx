@@ -34,24 +34,24 @@ async function post(path: string, body: unknown, actorId: string | null): Promis
 }
 
 function nextStep(deal: Deal, dispute: Dispute | null, events: VinEvent[]): string {
-  if (dispute && dispute.state === 'open') return 'Menunggu putusan arbiter. Escrow dan nota dibekukan.';
+  if (dispute && dispute.state === 'open') return 'Waiting for the arbiter ruling. Escrow and receipt are frozen.';
   switch (deal.state) {
     case 'escrow_pending':
-      return 'Pembeli mendanai escrow kendaraan dan escrow inspeksi (dua leg terpisah).';
+      return 'The buyer funds the vehicle escrow and the inspection escrow (two separate legs).';
     case 'inspecting':
       return events.some((e) => e.type === 'report_uploaded')
-        ? 'Pembeli menerima atau menolak laporan dalam batas waktu.'
-        : 'Bengkel mengerjakan cek di lokasi kendaraan dan mengunggah laporan minimum.';
+        ? 'The buyer accepts or rejects the report within the deadline.'
+        : 'The workshop inspects the vehicle on site and uploads the minimum report.';
     case 'inspection_accepted':
-      return 'Menunggu konfirmasi serah terima sesuai syarat yang dikunci di awal.';
+      return 'Waiting for handover confirmation under the terms locked at the start.';
     case 'handover_pending':
-      return 'Syarat serah terima dikonfirmasi. Dana kendaraan boleh dilepas ke penjual.';
+      return 'Handover terms confirmed. Vehicle funds may now release to the seller.';
     case 'completed':
-      return 'Deal selesai. Nota tercatat sebagai jejak klaim, bukan title.';
+      return 'Deal completed. The receipt is recorded as a claim trail, not a title.';
     case 'frozen':
-      return 'Deal dibekukan. Transfer nota tidak terjadi sebelum keputusan arbitrase.';
+      return 'Deal is frozen. No receipt transfers before the arbitration ruling.';
     default:
-      return 'Belum ada langkah berikutnya.';
+      return 'No next step yet.';
   }
 }
 
@@ -110,38 +110,38 @@ export function DealActions({ deal, dispute, events }: Props) {
 
   return (
     <div className="space-y-4">
-      <Notice tone={dispute?.state === 'open' ? 'danger' : 'info'} title="Langkah berikutnya">
+      <Notice tone={dispute?.state === 'open' ? 'danger' : 'info'} title="Next step">
         {nextStep(deal, dispute, events)}
       </Notice>
 
       {msg ? <Notice tone={msg.tone} title={msg.text} /> : null}
 
-      {/* Pembeli: danai escrow */}
+      {/* Buyer: fund the escrow */}
       {deal.state === 'escrow_pending' && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium">Escrow menunggu pendanaan</h4>
+          <h4 className="text-sm font-medium">Escrow awaiting funding</h4>
           <p className="mt-1 text-xs text-mist-400">
-            Dua leg terpisah: dana kendaraan {formatAmount(deal.priceAmount, deal.priceCurrency)} dan dana inspeksi{' '}
-            {formatAmount(deal.inspectionFeeAmount)}. Produksi: penyedia pembayaran berizin di koridor; on-chain: program Anchor.
+            Two separate legs: vehicle funds {formatAmount(deal.priceAmount, deal.priceCurrency)} and inspection funds{' '}
+            {formatAmount(deal.inspectionFeeAmount)}. Production: a licensed payment provider in the corridor; on-chain: the Anchor program.
           </p>
           <div className="mt-3">
             <button
               className="primary"
               disabled={busy || !isBuyer}
-              onClick={() => act(() => post(`/api/deals/${deal.id}/fund`, { payerRef: deal.buyerId }, actor?.id ?? null), 'Escrow didanai. Deal dikunci.')}
+              onClick={() => act(() => post(`/api/deals/${deal.id}/fund`, { payerRef: deal.buyerId }, actor?.id ?? null), 'Escrow funded. Deal locked.')}
             >
-              {isBuyer ? 'Danai escrow sekarang' : 'Hanya pembeli yang bisa mendanai escrow'}
+              {isBuyer ? 'Fund the escrow now' : 'Only the buyer can fund the escrow'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Bengkel: unggah laporan */}
+      {/* Workshop: upload the report */}
       {deal.state === 'inspecting' && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium">Unggah laporan inspeksi</h4>
+          <h4 className="text-sm font-medium">Upload inspection report</h4>
           <p className="mt-1 text-xs text-mist-400">
-            File mentah disimpan off-chain; yang dikunci hanya hash. Laporan wajib memuat titik-titik minimum.
+            Raw files stay off-chain; only the hash is anchored. The report must cover the minimum items.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div>
@@ -155,7 +155,7 @@ export function DealActions({ deal, dispute, events }: Props) {
               />
             </div>
             <div>
-              <label htmlFor="inspectedAt">Waktu inspeksi</label>
+              <label htmlFor="inspectedAt">Inspection time</label>
               <input
                 id="inspectedAt"
                 type="datetime-local"
@@ -164,36 +164,36 @@ export function DealActions({ deal, dispute, events }: Props) {
               />
             </div>
             <div>
-              <label htmlFor="reportHash">Hash laporan (sha256)</label>
+              <label htmlFor="reportHash">Report hash (sha256)</label>
               <div className="flex gap-2">
                 <input id="reportHash" value={report.reportHash} onChange={(e) => setReport({ ...report, reportHash: e.target.value })} placeholder="64 hex" />
                 <button type="button" className="ghost whitespace-nowrap" onClick={() => setReport({ ...report, reportHash: randomSha256() })}>
-                  contoh
+                  sample
                 </button>
               </div>
             </div>
             <div>
-              <label htmlFor="dashHash">Hash foto dasbor (sha256)</label>
+              <label htmlFor="dashHash">Dashboard photo hash (sha256)</label>
               <div className="flex gap-2">
                 <input id="dashHash" value={report.dashboardPhotoHash} onChange={(e) => setReport({ ...report, dashboardPhotoHash: e.target.value })} placeholder="64 hex" />
                 <button type="button" className="ghost whitespace-nowrap" onClick={() => setReport({ ...report, dashboardPhotoHash: randomSha256() })}>
-                  contoh
+                  sample
                 </button>
               </div>
             </div>
             <div className="sm:col-span-2">
-              <label htmlFor="summary">Kondisi utama</label>
+              <label htmlFor="summary">Main condition</label>
               <textarea
                 id="summary"
                 rows={3}
                 value={report.conditionSummary}
                 onChange={(e) => setReport({ ...report, conditionSummary: e.target.value })}
-                placeholder="Temuan pada tanggal inspeksi - bukan garansi sampai kendaraan tiba di negara pembeli."
+                placeholder="Findings on the inspection date — not a warranty until the vehicle reaches the buyer's country."
               />
             </div>
           </div>
           <fieldset className="mt-3">
-            <legend className="text-[0.7rem] uppercase tracking-wider text-mist-400">Checklist standar</legend>
+            <legend className="text-[0.7rem] uppercase tracking-wider text-mist-400">Standard checklist</legend>
             <div className="mt-1 grid gap-1 sm:grid-cols-2">
               {Object.entries(report.checklist).map(([key, checked]) => (
                 <label key={key} className="flex items-center gap-2 text-xs normal-case text-mist-300">
@@ -229,24 +229,24 @@ export function DealActions({ deal, dispute, events }: Props) {
                       },
                       actor?.id ?? null,
                     ),
-                  'Laporan diunggah. Hash terkunci di event log.',
+                  'Report uploaded. The hash is anchored in the event log.',
                 )
               }
             >
-              {isInspector ? 'Unggah laporan' : 'Hanya bengkel terpilih yang bisa mengunggah'}
+              {isInspector ? 'Upload report' : 'Only the selected workshop can upload'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Pembeli: terima laporan */}
+      {/* Buyer: accept the report */}
       {deal.state === 'inspecting' && events.some((e) => e.type === 'report_uploaded') && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium">Terima laporan</h4>
+          <h4 className="text-sm font-medium">Accept report</h4>
           {hasAnomaly ? (
             <div className="mt-2">
-              <Notice tone="warn" title="Ada anomali kilometer pada VIN ini">
-                Anomali bukan penolakan otomatis, tetapi peringatan yang wajib dilihat sebelum dana dilepas.
+              <Notice tone="warn" title="This VIN has an odometer anomaly">
+                An anomaly is not an automatic rejection, but a warning the buyer must see before funds release.
               </Notice>
               <label className="mt-2 flex items-center gap-2 text-xs normal-case text-mist-300">
                 <input
@@ -255,7 +255,7 @@ export function DealActions({ deal, dispute, events }: Props) {
                   checked={accept.acknowledgeAnomaly}
                   onChange={(e) => setAccept({ acknowledgeAnomaly: e.target.checked })}
                 />
-                Saya sudah membaca peringatan anomali odometer
+                I have read the odometer anomaly warning
               </label>
             </div>
           ) : null}
@@ -267,35 +267,35 @@ export function DealActions({ deal, dispute, events }: Props) {
                 act(async () => {
                   const detail = await fetch(`/api/deals/${deal.id}`).then((r) => r.json());
                   const reportId: string = detail.reports?.[0]?.id;
-                  if (!reportId) throw new Error('Laporan belum tersedia di server');
+                  if (!reportId) throw new Error('The report is not available on the server yet');
                   return post(
                     `/api/deals/${deal.id}/reports/${reportId}/accept`,
                     { buyerId: deal.buyerId, acknowledgeAnomaly: accept.acknowledgeAnomaly },
                     actor?.id ?? null,
                   );
-                }, 'Laporan diterima. Dana inspeksi lepas ke bengkel setelah fee platform dipotong.')
+                }, 'Report accepted. Inspection funds release to the workshop after the platform fee.')
               }
             >
-              {isBuyer ? 'Terima laporan, lepas dana inspeksi' : 'Hanya pembeli yang bisa menerima laporan'}
+              {isBuyer ? 'Accept the report, release inspection funds' : 'Only the buyer can accept the report'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Serah terima */}
+      {/* Handover */}
       {['inspection_accepted', 'handover_pending'].includes(deal.state) && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium">Konfirmasi serah terima</h4>
+          <h4 className="text-sm font-medium">Confirm handover</h4>
           <p className="mt-1 text-xs text-mist-400">
-            Syarat yang dikunci: {deal.handoverTerms}. Terkonfirmasi oleh: {deal.handoverConfirmedBy.length} pihak.
+            Locked terms: {deal.handoverTerms}. Confirmed by: {deal.handoverConfirmedBy.length} parties.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div>
-              <label htmlFor="method">Metode bukti</label>
+              <label htmlFor="method">Evidence method</label>
               <select id="method" value={handover.method} onChange={(e) => setHandover({ method: e.target.value as typeof handover.method })}>
-                <option value="handover_location_confirmed">Serah di lokasi</option>
-                <option value="load_proof">Bukti muat</option>
-                <option value="mutual_confirmation">Konfirmasi kedua pihak</option>
+                <option value="handover_location_confirmed">Handover at location</option>
+                <option value="load_proof">Load proof</option>
+                <option value="mutual_confirmation">Confirmation by both parties</option>
               </select>
             </div>
             <div className="flex items-end">
@@ -305,62 +305,62 @@ export function DealActions({ deal, dispute, events }: Props) {
                 onClick={() =>
                   act(
                     () => post(`/api/deals/${deal.id}/handover`, { actorId: actor?.id, method: handover.method }, actor?.id ?? null),
-                    'Konfirmasi tercatat.',
+                    'Confirmation recorded.',
                   )
                 }
               >
-                {isBuyer || isSeller ? 'Konfirmasi sebagai saya' : 'Hanya pembeli/penjual'}
+                {isBuyer || isSeller ? 'Confirm as myself' : 'Buyer or seller only'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Pelepasan dana kendaraan */}
+      {/* Vehicle fund release */}
       {deal.state === 'handover_pending' && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium">Pelepasan dana kendaraan</h4>
+          <h4 className="text-sm font-medium">Vehicle fund release</h4>
           <p className="mt-1 text-xs text-mist-400">
-            Dana kendaraan tidak cair sebelum syarat serah terima terpenuhi. Setelah lepas, nota selesai dicatat ke pembeli.
+            Vehicle funds do not release before handover conditions are met. Once released, the completion receipt is recorded to the buyer.
           </p>
           <div className="mt-3">
             <button
               className="primary"
               disabled={busy}
               onClick={() =>
-                act(() => post(`/api/deals/${deal.id}/release-vehicle`, {}, actor?.id ?? null), 'Dana kendaraan dilepas. Nota selesai tercatat.')
+                act(() => post(`/api/deals/${deal.id}/release-vehicle`, {}, actor?.id ?? null), 'Vehicle funds released. The completion receipt is recorded.')
               }
             >
-              Lepaskan dana kendaraan dan catat nota
+              Release vehicle funds and record the receipt
             </button>
           </div>
         </div>
       )}
 
-      {/* Sengketa */}
+      {/* Dispute */}
       {canDispute && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium">Buka sengketa</h4>
+          <h4 className="text-sm font-medium">Open a dispute</h4>
           <p className="mt-1 text-xs text-mist-400">
-            Sengketa membekukan escrow dan nota. Hanya jika kedua pihak tidak sepakat.
+            A dispute freezes the escrow and the receipt. Use it only when the two sides cannot agree.
           </p>
           <div className="mt-3">
-            <label htmlFor="reason">Alasan</label>
+            <label htmlFor="reason">Reason</label>
             <textarea
               id="reason"
               rows={3}
               value={disputeForm.reason}
               onChange={(e) => setDisputeForm({ reason: e.target.value })}
-              placeholder="Penjual tidak menyerahkan unit / laporan diduga tidak sesuai unit / alasan lain."
+              placeholder="The seller did not hand over the unit / the report appears not to match the unit / another reason."
             />
           </div>
           <div className="mt-3">
             <button
               className="primary"
               disabled={busy || !actor || disputeForm.reason.length < 10}
-              onClick={() => act(() => post(`/api/deals/${deal.id}/disputes`, { openedBy: actor?.id, reason: disputeForm.reason }, actor?.id ?? null), 'Sengketa dibuka. Escrow dibekukan.')}
+              onClick={() => act(() => post(`/api/deals/${deal.id}/disputes`, { openedBy: actor?.id, reason: disputeForm.reason }, actor?.id ?? null), 'Dispute opened. The escrow is frozen.')}
             >
-              Buka sengketa
+              Open a dispute
             </button>
           </div>
         </div>
@@ -369,31 +369,31 @@ export function DealActions({ deal, dispute, events }: Props) {
       {/* Arbiter */}
       {dispute?.state === 'open' && isArbiter && (
         <div className="card p-4">
-          <h4 className="text-sm font-medium">Putusan arbiter</h4>
+          <h4 className="text-sm font-medium">Arbiter ruling</h4>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div>
-              <label htmlFor="outcome">Putusan</label>
+              <label htmlFor="outcome">Ruling</label>
               <select id="outcome" value={resolveForm.outcome} onChange={(e) => setResolveForm({ ...resolveForm, outcome: e.target.value as typeof resolveForm.outcome })}>
-                <option value="refund_buyer">Dana kembali ke pembeli</option>
-                <option value="release_to_seller">Dana dilepas ke penjual</option>
-                <option value="split">Pelepasan sebagian (split)</option>
-                <option value="bond_slashed">Penjual gagal: jaminan terpotong</option>
+                <option value="refund_buyer">Funds back to the buyer</option>
+                <option value="release_to_seller">Funds released to the seller</option>
+                <option value="split">Partial release (split)</option>
+                <option value="bond_slashed">Seller at fault: bond slashed</option>
               </select>
             </div>
             {resolveForm.outcome === 'split' ? (
               <>
                 <div>
-                  <label htmlFor="toBuyer">Kembali ke pembeli</label>
+                  <label htmlFor="toBuyer">Back to the buyer</label>
                   <input id="toBuyer" value={resolveForm.refundedAmount} onChange={(e) => setResolveForm({ ...resolveForm, refundedAmount: e.target.value })} placeholder="1000" />
                 </div>
                 <div>
-                  <label htmlFor="toSeller">Dilepas ke penjual</label>
+                  <label htmlFor="toSeller">Released to the seller</label>
                   <input id="toSeller" value={resolveForm.releasedAmount} onChange={(e) => setResolveForm({ ...resolveForm, releasedAmount: e.target.value })} placeholder="44000" />
                 </div>
               </>
             ) : null}
             <div className="sm:col-span-2">
-              <label htmlFor="arbNote">Catatan arbiter</label>
+              <label htmlFor="arbNote">Arbiter note</label>
               <textarea id="arbNote" rows={3} value={resolveForm.arbiterNote} onChange={(e) => setResolveForm({ ...resolveForm, arbiterNote: e.target.value })} />
             </div>
           </div>
@@ -416,19 +416,19 @@ export function DealActions({ deal, dispute, events }: Props) {
                       },
                       actor?.id ?? null,
                     ),
-                  'Sengketa diputus. Potongan jaminan masuk kas sengketa, bukan dompet tim.',
+                  'Dispute resolved. The slashed bond goes to the dispute fund, not the team wallet.',
                 )
               }
             >
-              Putuskan sengketa
+              Rule on the dispute
             </button>
           </div>
         </div>
       )}
 
       {dispute?.state === 'open' && !isArbiter ? (
-        <Notice tone="danger" title={`Sengketa terbuka oleh ${shortHash(dispute.openedBy, 8, 4)}`}>
-          Pilih persona Arbiter pada panel kiri untuk memutuskan sengketa.
+        <Notice tone="danger" title={`Dispute opened by ${shortHash(dispute.openedBy, 8, 4)}`}>
+          Select the Arbiter persona in the left panel to rule on the dispute.
         </Notice>
       ) : null}
     </div>

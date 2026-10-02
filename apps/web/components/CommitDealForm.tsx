@@ -21,7 +21,7 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
     shippingPaidBy: 'buyer' as 'buyer' | 'seller',
     shippingAmount: '1200',
     inspectionDeadlineHours: 72,
-    handoverTerms: 'Serah di lokasi + bukti muat; konfirmasi kedua pihak',
+    handoverTerms: 'Handover at location + load proof; confirmation by both parties',
     fundNow: true,
   });
 
@@ -37,8 +37,8 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
 
   if (!actor || actor.role !== 'buyer') {
     return (
-      <Notice tone="info" title="Pilih persona Pembeli untuk mengunci deal">
-        Pembeli memilih bengkel, mengunci harga, dan mendanai escrow.
+      <Notice tone="info" title="Select the Buyer persona to lock a deal">
+        The buyer picks the workshop, locks the price, and funds the escrow.
       </Notice>
     );
   }
@@ -71,9 +71,9 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
           headers: { 'content-type': 'application/json', 'x-actor-id': actor!.id },
           body: JSON.stringify({ payerRef: actor!.id }),
         });
-        if (!fundRes.ok) throw new Error('Deal terkunci, tetapi pendanaan escrow gagal. Coba danai dari halaman deal.');
+        if (!fundRes.ok) throw new Error('The deal is locked, but funding the escrow failed. Try funding it from the deal page.');
       }
-      setMsg({ tone: 'safe', text: 'Deal dikunci. Listing tidak bisa dijual ke pembeli kedua selama escrow aktif.' });
+      setMsg({ tone: 'safe', text: 'Deal locked. The listing cannot be sold to a second buyer while the escrow is active.' });
       router.push(`/deals/${data.deal.id}`);
     } catch (error) {
       setMsg({ tone: 'danger', text: error instanceof Error ? error.message : String(error) });
@@ -84,29 +84,29 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
 
   return (
     <div className="card p-4">
-      <h3 className="text-sm font-medium">Kunci deal</h3>
+      <h3 className="text-sm font-medium">Lock a deal</h3>
       <p className="mt-1 text-xs text-mist-400">
-        Harga kendaraan {formatAmount(listing.priceAmount, listing.priceCurrency)} masuk escrow kendaraan; biaya inspeksi masuk escrow terpisah.
+        The vehicle price {formatAmount(listing.priceAmount, listing.priceCurrency)} enters the vehicle escrow; the inspection fee enters a separate escrow.
       </p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label htmlFor="inspector">Bengkel inspeksi (dipilih pembeli)</label>
+          <label htmlFor="inspector">Inspection workshop (chosen by the buyer)</label>
           <select id="inspector" value={form.inspectorId} onChange={(e) => setForm({ ...form, inspectorId: e.target.value })}>
-            {inspectors.length === 0 ? <option value="">Belum ada bengkel terverifikasi</option> : null}
+            {inspectors.length === 0 ? <option value="">No verified workshop yet</option> : null}
             {inspectors.map((entry) => (
               <option key={entry.actor.id} value={entry.actor.id}>
-                {entry.actor.displayName} — tepat waktu {entry.reputation?.onTimeReportRate !== null && entry.reputation?.onTimeReportRate !== undefined ? `${(entry.reputation.onTimeReportRate * 100).toFixed(0)}%` : 'n/a'}
+                {entry.actor.displayName} — on time {entry.reputation?.onTimeReportRate !== null && entry.reputation?.onTimeReportRate !== undefined ? `${(entry.reputation.onTimeReportRate * 100).toFixed(0)}%` : 'n/a'}
               </option>
             ))}
           </select>
         </div>
         <div>
-          <label htmlFor="fee">Biaya inspeksi (USDC)</label>
+          <label htmlFor="fee">Inspection fee (USDC)</label>
           <input id="fee" value={form.inspectionFeeAmount} onChange={(e) => setForm({ ...form, inspectionFeeAmount: e.target.value })} />
         </div>
         <div>
-          <label htmlFor="deadline">Batas waktu laporan (jam)</label>
+          <label htmlFor="deadline">Report deadline (hours)</label>
           <input
             id="deadline"
             inputMode="numeric"
@@ -115,30 +115,30 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
           />
         </div>
         <div>
-          <label htmlFor="shippingBy">Ongkir ditanggung</label>
+          <label htmlFor="shippingBy">Shipping paid by</label>
           <select id="shippingBy" value={form.shippingPaidBy} onChange={(e) => setForm({ ...form, shippingPaidBy: e.target.value as 'buyer' | 'seller' })}>
-            <option value="buyer">Pembeli</option>
-            <option value="seller">Penjual</option>
+            <option value="buyer">Buyer</option>
+            <option value="seller">Seller</option>
           </select>
         </div>
         <div>
-          <label htmlFor="shippingAmount">Perkiraan ongkir</label>
+          <label htmlFor="shippingAmount">Estimated shipping</label>
           <input id="shippingAmount" value={form.shippingAmount} onChange={(e) => setForm({ ...form, shippingAmount: e.target.value })} />
         </div>
         <div className="sm:col-span-2">
-          <label htmlFor="terms">Syarat serah terima (dikunci di awal)</label>
+          <label htmlFor="terms">Handover terms (locked at the start)</label>
           <input id="terms" value={form.handoverTerms} onChange={(e) => setForm({ ...form, handoverTerms: e.target.value })} />
         </div>
       </div>
 
       <label className="mt-3 flex items-center gap-2 text-xs normal-case text-mist-300">
         <input type="checkbox" className="h-4 w-4" checked={form.fundNow} onChange={(e) => setForm({ ...form, fundNow: e.target.checked })} />
-        Danai escrow sekarang (simulasi penyedia berizin)
+        Fund the escrow now (licensed provider simulation)
       </label>
 
       <div className="mt-3">
         <button className="primary" disabled={busy || !form.inspectorId} onClick={submit}>
-          {busy ? 'Memproses…' : 'Kunci deal & danai escrow'}
+          {busy ? 'Working…' : 'Lock deal & fund escrow'}
         </button>
       </div>
       {msg ? (

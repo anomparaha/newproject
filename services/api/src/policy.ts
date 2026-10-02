@@ -1,47 +1,48 @@
 /**
- * Kebijakan platform VIN.
+ * VIN platform policy.
  *
- * Angka di sini adalah KEPUTUSAN PRODUK yang harus dibaca sebagai parameter
- * operasional, bukan janji investasi. Semua ambang dapat diubah lewat tata
- * kelola platform dan wajib dicatat sebagai event bila mengubah aturan koridor.
+ * The numbers here are PRODUCT DECISIONS, to be read as operating parameters
+ * rather than investment promises. Every threshold can be changed through
+ * platform governance, and any change to corridor rules must be recorded as an
+ * event.
  */
 
 import type { Corridor, CorridorMetrics, TokenUtility } from '@vin/shared';
 import { TOKEN_UTILITY } from '@vin/shared';
 
 // ---------------------------------------------------------------------------
-// Fee
+// Fees
 // ---------------------------------------------------------------------------
 
 export const FEES = {
-  /** Fee transaksi kendaraan. */
+  /** Vehicle transaction fee. */
   vehicleBps: 100, // 1.00%
-  /** Fee aplikasi inspeksi. */
-  inspectionBps: 500, // 5.00% dari biaya inspeksi
-  /** Potongan fee bila dibayar dengan token platform (diskon). */
+  /** Inspection app fee. */
+  inspectionBps: 500, // 5.00% of the inspection fee
+  /** Fee discount when paying with the platform token. */
   tokenDiscountFactor: 0.6,
-  /** Bakar token hanya dari fee yang benar-benar terkumpul dari pemakaian. */
+  /** Burn only from fees that were actually collected from usage. */
   burnFromCollectedFeesOnly: true,
 } as const;
 
 // ---------------------------------------------------------------------------
-// Jaminan
+// Bonds
 // ---------------------------------------------------------------------------
 
 export const BONDS = {
-  /** Jaminan listing di atas ambang nilai koridor. */
+  /** Listing bond above the corridor value threshold. */
   listingBondUsdc: '50',
-  /** Jaminan bengkel untuk menerima order. */
+  /** Workshop bond required to take orders. */
   inspectorBondUsdc: '25',
-  /** Batas nilai di bawah mana jaminan boleh dalam stablecoin dulu (Tahap Bukti). */
+  /** Value ceiling under which the bond may still be stablecoin (Proof Stage). */
   stablecoinAllowedBelowUsd: 30_000,
-  /** Potongan jaminan saat pelanggaran. Separuh masuk kas sengketa, bukan tim. */
+  /** Share of the bond slashed on a violation. Half goes to the dispute fund, not the team. */
   slashRatio: 0.5,
   disputeFundShare: 1.0,
 } as const;
 
 // ---------------------------------------------------------------------------
-// Koridor
+// Corridors
 // ---------------------------------------------------------------------------
 
 export const PILOT_CORRIDOR: Omit<Corridor, 'openedAt'> & { openedAt: string } = {
@@ -55,29 +56,29 @@ export const PILOT_CORRIDOR: Omit<Corridor, 'openedAt'> & { openedAt: string } =
   openedAt: '2026-01-15T00:00:00.000Z',
 };
 
-/** Koridor kandidat: belum boleh dilayani sampai koridor pilot sehat. */
+/** Candidate corridors: not served until the pilot corridor is healthy. */
 export const CANDIDATE_CORRIDORS = [
-  { originCountry: 'ID', destinationCountry: 'MY', reason: 'Menunggu koridor pilot stabil' },
-  { originCountry: 'JP', destinationCountry: 'ID', reason: 'JIS/ekspor Jepang: butuh bengkel terverifikasi di Jepang' },
+  { originCountry: 'ID', destinationCountry: 'MY', reason: 'Waiting for the pilot corridor to stabilise' },
+  { originCountry: 'JP', destinationCountry: 'ID', reason: 'Japanese export: needs verified workshops in Japan' },
 ] as const;
 
 // ---------------------------------------------------------------------------
-// Kapasitas (akses token, bukan pembelian)
+// Capacity (token access, not purchases)
 // ---------------------------------------------------------------------------
 
 export const CAPACITY = {
-  /** Batas listing aktif untuk dealer tanpa stake kapasitas. */
+  /** Active listing limit for a dealer without a capacity stake. */
   freeActiveListingsPerSeller: 3,
-  /** Tambahan slot listing per stake kapasitas, bukan pembelian slot. */
+  /** Extra listing slots per capacity stake, never bought outright. */
   listingsPer1000Tokens: 5,
-  /** Antrean inspeksi: bengkel dengan stake kapasitas tampil pada antrean utama. */
+  /** Inspection queue: workshops with a capacity stake appear in the main queue. */
   priorityQueue: true,
 } as const;
 
 export const TOKEN: TokenUtility = TOKEN_UTILITY;
 
 // ---------------------------------------------------------------------------
-// Pemicu berhenti perluasan (playbook §10)
+// Expansion halt triggers (playbook §10)
 // ---------------------------------------------------------------------------
 
 export const HALT_THRESHOLDS = {
@@ -89,93 +90,92 @@ export const HALT_THRESHOLDS = {
 } as const;
 
 /**
- * Keempat angka buruk SEKALIGUS -> perluasan dihentikan. Menambah utilitas token
- * tidak memperbaiki pasar yang belum menyelesaikan kendaraan fisik.
+ * All four numbers bad AT ONCE -> expansion halts. Adding token utility does not
+ * fix a market that has not delivered physical vehicles yet.
  */
 export function evaluateCorridorHealth(metrics: CorridorMetrics): { halted: boolean; reasons: string[] } {
   const reasons: string[] = [];
-  if (metrics.dealsCompleted < HALT_THRESHOLDS.minDealsCompleted) reasons.push('deal_selesai_rendah');
-  if (metrics.disputeRate > HALT_THRESHOLDS.maxDisputeRate) reasons.push('sengketa_tinggi');
+  if (metrics.dealsCompleted < HALT_THRESHOLDS.minDealsCompleted) reasons.push('deals_completed_too_low');
+  if (metrics.disputeRate > HALT_THRESHOLDS.maxDisputeRate) reasons.push('dispute_rate_too_high');
   if (metrics.unexplainedOdometerAnomalies > HALT_THRESHOLDS.maxUnexplainedAnomalies) {
-    reasons.push('anomali_kilometer_belum_dijelaskan');
+    reasons.push('unexplained_odometer_anomalies');
   }
   if (
     metrics.sellerReturnRate < HALT_THRESHOLDS.minSellerReturnRate ||
     metrics.inspectorReturnRate < HALT_THRESHOLDS.minInspectorReturnRate
   ) {
-    reasons.push('penjual_atau_bengkel_tidak_kembali');
+    reasons.push('sellers_or_workshops_not_returning');
   }
   const halted = reasons.length >= 4;
   return { halted, reasons: halted ? reasons : [] };
 }
 
 // ---------------------------------------------------------------------------
-// Tahapan publikasi (playbook §9)
+// Publication stages (playbook §9)
 // ---------------------------------------------------------------------------
 
 export const PUBLICATION_STAGES = [
   {
-    id: 'bukti',
-    label: 'Tahap Bukti',
+    id: 'proof',
+    label: 'Proof Stage',
     allowed: [
-      'satu_koridor',
-      'inspeksi_wajib',
-      'escrow_wajib',
-      'riwayat_vin_menyala',
-      'nft_nota_untuk_deal_selesai',
-      'jaminan_stablecoin',
+      'single_corridor',
+      'mandatory_inspection',
+      'mandatory_escrow',
+      'vin_history_live',
+      'receipt_nft_for_completed_deals',
+      'stablecoin_bonds',
     ],
-    forbidden: ['penjualan_token_ke_publik', 'proyeksi_harga_token'],
+    forbidden: ['public_token_sale', 'token_price_projections'],
   },
   {
-    id: 'pasar',
-    label: 'Tahap Pasar',
+    id: 'market',
+    label: 'Market Stage',
     allowed: [
-      'bengkel_pihak_ketiga',
-      'standar_laporan',
-      'pembekuan_sengketa',
-      'metrik_publik: deal_selesai, median_waktu_laporan, tingkat_sengketa',
+      'third_party_workshops',
+      'report_standard',
+      'dispute_freeze',
+      'public_metrics: deals_completed, median_hours_to_report, dispute_rate',
     ],
-    forbidden: ['proyeksi_harga_token'],
+    forbidden: ['token_price_projections'],
   },
   {
     id: 'token',
-    label: 'Tahap Token',
+    label: 'Token Stage',
     allowed: [
-      'jaminan_token',
-      'potongan_fee_token',
-      'akses_kapasitas',
-      'distribusi: operasional, likuiditas_terbatas, program_pemakai',
+      'token_bonds',
+      'token_fee_discount',
+      'capacity_access',
+      'distribution: operations, limited_liquidity, user_program',
     ],
-    forbidden: ['alokasi_hak_atas_pendapatan', 'janji_hasil_untuk_holder'],
+    forbidden: ['revenue_rights_allocation', 'yield_promises_to_holders'],
   },
   {
-    id: 'perluasan',
-    label: 'Tahap Perluasan',
-    allowed: ['koridor_kedua', 'bengkel_lokal_terverifikasi', 'riwayat_vin_lama_tetap_terbaca'],
-    forbidden: ['mengubah_aturan_anomali_kilometer_mundur'],
+    id: 'expansion',
+    label: 'Expansion Stage',
+    allowed: ['second_corridor', 'verified_local_workshops', 'older_vin_history_remains_readable'],
+    forbidden: ['weakening_odometer_anomaly_rules_retroactively'],
   },
 ] as const;
 
 export const PUBLIC_METRICS = ['deals_completed', 'median_hours_to_report', 'dispute_rate'] as const;
 
-/** Metrik token yang sah dibicarakan. Volume perdagangan BUKAN bukti ekosistem hidup. */
+/** The only token metrics worth discussing. Trading volume is NOT proof of a living ecosystem. */
 export const TOKEN_METRICS_NOTE =
-  'Metrik yang relevan hanya nilai jaminan yang terkunci oleh penjual dan bengkel aktif, ' +
-  'fee yang dibayar dengan token, dan jumlah deal selesai. Volume perdagangan token di luar itu ' +
-  'tidak membuktikan ekosistem hidup.';
+  'The metrics that matter are the bond value locked by active sellers and workshops, the fees paid in the ' +
+  'token, and the number of completed deals. Token trading volume beyond that does not prove a living ecosystem.';
 
 export const DISCLAIMERS = {
   nftNotTitle:
-    'NFT pada VIN adalah nota dan jejak klaim, bukan surat kendaraan. BPKB, title, registrasi, ' +
-    'bea cukai, pajak, dan balik nama mengikuti hukum negara asal dan negara tujuan.',
+    'The NFT on a VIN is a receipt and a claim trail, not a vehicle title. Registration papers, title, ' +
+    'customs, tax, and ownership transfer follow the law of the origin and destination countries.',
   tokenNotEquity:
-    'Token VIN bukan saham platform, bukan alat bayar harga mobil, tidak memberi bagi hasil, ' +
-    'dan tidak memberi hak suara atas pendapatan perusahaan.',
+    'The VIN token is not company equity, is not a means to pay a vehicle price, pays no revenue share, ' +
+    'and grants no voting rights over company revenue.',
   reportNotWarranty:
-    'Laporan inspeksi adalah temuan pada tanggal inspeksi, bukan garansi sampai kendaraan tiba ' +
-    'di negara pembeli.',
+    'An inspection report states findings on the inspection date; it is not a warranty until the vehicle ' +
+    'reaches the buyer country.',
   moneyRule:
-    'Harga kendaraan, ongkir, dan biaya inspeksi dibayar dengan stablecoin atau fiat. ' +
-    'Penjual dan bengkel menerima stablecoin atau fiat, dan tidak dipaksa memegang token.',
+    'Vehicle price, shipping, and inspection fees are paid in stablecoin or fiat. ' +
+    'Sellers and workshops are paid in stablecoin or fiat and are never forced to hold the token.',
 } as const;

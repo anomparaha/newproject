@@ -1,11 +1,11 @@
 /**
- * Uji aturan on-chain hasil rekonsiliasi (lihat docs/SPEC_RECONCILIATION.md).
+ * Tests for the reconciled on-chain rules (see docs/SPEC_RECONCILIATION.md).
  *
- * Dua hal yang diuji di sini adalah perbaikan dari spesifikasi lima-kontrak:
- *   - urutan pemanggilan yang sah (di luar urutan = ditolak),
- *   - anomali kilometer dihitung dari state registry, bukan dari server.
+ * The two things tested here are the fixes taken from the five-contract spec:
+ *   - valid call order (anything out of order is rejected),
+ *   - odometer anomalies computed from registry state, not from the server.
  *
- * Jalankan: npm test
+ * Run: npm test
  */
 
 import assert from 'node:assert/strict';
@@ -40,7 +40,7 @@ import {
 
 const ctx = (actor: CallContext['actor'], now = '2026-10-03T00:00:00.000Z'): CallContext => ({ actor, now });
 
-/** Urutan yang sah sesuai spesifikasi. */
+/** The valid order from the design spec. */
 const HAPPY_PATH: Array<[Action, CallContext['actor']]> = [
   [ACTION.lockStake, 'seller'],
   [ACTION.recordListing, 'seller'],
@@ -56,10 +56,10 @@ const HAPPY_PATH: Array<[Action, CallContext['actor']]> = [
 ];
 
 // ---------------------------------------------------------------------------
-// 1. Urutan pemanggilan
+// 1. Call order
 // ---------------------------------------------------------------------------
 
-test('urutan: alur bahagia lengkap berjalan sampai nota', () => {
+test('order: the full happy path runs through to the receipt', () => {
   let state = initDealState(72);
   for (const [action, actor] of HAPPY_PATH) {
     state = applyCall(state, action, ctx(actor));
@@ -68,21 +68,21 @@ test('urutan: alur bahagia lengkap berjalan sampai nota', () => {
   assert.equal(state.noteMinted, true);
 });
 
-test('urutan: pemanggilan di luar urutan selalu ditolak', () => {
+test('order: any call outside the valid order is rejected', () => {
   fc.assert(
     fc.property(
       fc.constantFrom(...(Object.values(ACTION) as Action[])),
-      fc.constantFrom(STAGE.kosong, STAGE.staked, STAGE.listed, STAGE.reserved, STAGE.funded, STAGE.handoverMarked, STAGE.released),
+      fc.constantFrom(STAGE.empty, STAGE.staked, STAGE.listed, STAGE.reserved, STAGE.funded, STAGE.handoverMarked, STAGE.released),
       (action, stage) => {
         const state: DealMachineState = { ...initDealState(72), stage };
         const inOrder = DEAL_ORDER[action].from.includes(stage);
         if (!inOrder) {
-          // Pemeriksaan urutan dijalankan sebelum pemeriksaan aktor, jadi
-          // 'anyone' cukup untuk mengisolasi aturan urutan.
+          // The order check runs before the actor check, so 'anyone' is enough to
+          // isolate the ordering rule.
           assert.throws(
             () => applyCall(state, action, ctx('anyone')),
             (error: unknown) => error instanceof RuleViolation && error.code === 'OUT_OF_ORDER',
-            `${action} dari tahap ${stage} seharusnya ditolak sebagai OUT_OF_ORDER`,
+            `${action} from stage ${stage} should be rejected as OUT_OF_ORDER`,
           );
         }
       },
@@ -91,7 +91,7 @@ test('urutan: pemanggilan di luar urutan selalu ditolak', () => {
   );
 });
 
-test('urutan: aktor yang salah ditolak', () => {
+test('order: the wrong actor is rejected', () => {
   let state = initDealState(72);
   state = applyCall(state, ACTION.lockStake, ctx('seller'));
   state = applyCall(state, ACTION.recordListing, ctx('seller'));
@@ -101,14 +101,14 @@ test('urutan: aktor yang salah ditolak', () => {
   state = applyCall(state, ACTION.submitReport, ctx('inspector'));
   state = applyCall(state, ACTION.acceptReport, ctx('buyer'));
 
-  // mark_handover hanya penjual; pembeli tidak boleh.
+  // mark_handover is seller-only; the buyer must not run it.
   assert.throws(() => applyCall(state, ACTION.markHandover, ctx('buyer')), /WRONG_ACTOR/);
-  // submit_report hanya bengkel.
+  // submit_report is workshop-only.
   const inspecting: DealMachineState = { ...initDealState(72), stage: STAGE.inspecting };
   assert.throws(() => applyCall(inspecting, ACTION.submitReport, ctx('buyer')), /WRONG_ACTOR/);
 });
 
-test('urutan: sengketa membekukan alur; hanya arbiter yang boleh memutuskan', () => {
+test('order: a dispute freezes the flow; only the arbiter may rule', () => {
   let state = initDealState(72);
   state = applyCall(state, ACTION.lockStake, ctx('seller'));
   state = applyCall(state, ACTION.recordListing, ctx('seller'));
@@ -116,7 +116,7 @@ test('urutan: sengketa membekukan alur; hanya arbiter yang boleh memutuskan', ()
   state = applyCall(state, ACTION.deposit, ctx('buyer'));
   state = applyCall(state, ACTION.openDispute, ctx('buyer'));
 
-  // Semua langkah normal ditolak selama sengketa.
+  // Every normal step is rejected while the dispute is open.
   assert.throws(() => applyCall(state, ACTION.fundInspection, ctx('buyer')), /DISPUTE_OPEN/);
   assert.throws(() => applyCall(state, ACTION.release, ctx('anyone')), /DISPUTE_OPEN/);
   assert.throws(() => applyCall(state, ACTION.resolveDispute, ctx('buyer')), /WRONG_ACTOR/);
@@ -124,27 +124,27 @@ test('urutan: sengketa membekukan alur; hanya arbiter yang boleh memutuskan', ()
   state = applyCall(state, ACTION.resolveDispute, ctx('arbiter'));
   assert.equal(state.stage, STAGE.resolved);
   assert.equal(state.disputeOpen, false);
-  // Setelah diputus, alur normal tidak bisa dilanjutkan dari tahap resolved.
+  // After the ruling the normal path cannot resume from the resolved stage.
   assert.throws(() => applyCall(state, ACTION.release, ctx('anyone')), /OUT_OF_ORDER/);
 });
 
-test('urutan: nota tidak bisa dicetak dua kali', () => {
+test('order: a receipt cannot be minted twice', () => {
   const released: DealMachineState = { ...initDealState(72), stage: STAGE.released, noteMinted: true };
   assert.throws(() => applyCall(released, ACTION.mintNote, ctx('anyone')), /NOTE_EXISTS/);
 });
 
-test('urutan: sengketa hanya bisa dibuka setelah dana masuk', () => {
-  for (const stage of [STAGE.kosong, STAGE.staked, STAGE.listed, STAGE.reserved]) {
+test('order: a dispute can only open after funds are in', () => {
+  for (const stage of [STAGE.empty, STAGE.staked, STAGE.listed, STAGE.reserved]) {
     const state: DealMachineState = { ...initDealState(72), stage };
     assert.throws(() => applyCall(state, ACTION.openDispute, ctx('buyer')), /OUT_OF_ORDER/);
   }
 });
 
 // ---------------------------------------------------------------------------
-// 2. Jendela konfirmasi (pembeli yang diam tidak menahan dana selamanya)
+// 2. Confirmation window (a silent buyer must not hold funds forever)
 // ---------------------------------------------------------------------------
 
-test('jendela konfirmasi: pembeli diam -> release tetap sah setelah jendela lewat', () => {
+test('confirmation window: a silent buyer still lets release through once the window passes', () => {
   fc.assert(
     fc.property(fc.integer({ min: 1, max: 240 }), fc.integer({ min: 0, max: 240 }), (windowHours, hoursLater) => {
       const markedAt = '2026-10-03T00:00:00.000Z';
@@ -157,14 +157,14 @@ test('jendela konfirmasi: pembeli diam -> release tetap sah setelah jendela lewa
       const elapsed = hoursLater >= windowHours;
       assert.equal(windowElapsedWithoutDispute(state, now), elapsed);
       const result = canRelease(state, now);
-      assert.equal(result.ok, elapsed, `ok seharusnya ${elapsed}, dapat ${result.reason}`);
-      if (elapsed) assert.equal(result.reason, 'jendela_konfirmasi_lewat_tanpa_sengketa');
+      assert.equal(result.ok, elapsed, `ok should be ${elapsed}, got ${result.reason}`);
+      if (elapsed) assert.equal(result.reason, 'confirm_window_elapsed_without_dispute');
     }),
     { numRuns: 300 },
   );
 });
 
-test('jendela konfirmasi: sengketa menahan release walau jendela lewat', () => {
+test('confirmation window: a dispute holds release even after the window passes', () => {
   const state: DealMachineState = {
     ...initDealState(24),
     stage: STAGE.frozen,
@@ -174,20 +174,20 @@ test('jendela konfirmasi: sengketa menahan release walau jendela lewat', () => {
   const later = '2026-10-10T00:00:00.000Z';
   assert.equal(windowElapsedWithoutDispute(state, later), false);
   assert.equal(canRelease(state, later).ok, false);
-  assert.equal(canRelease(state, later).reason, 'sengketa_terbuka');
+  assert.equal(canRelease(state, later).reason, 'dispute_open');
 });
 
-test('jendela konfirmasi: deadline dihitung dari markHandover', () => {
+test('confirmation window: the deadline is counted from markHandover', () => {
   const state: DealMachineState = { ...initDealState(48), stage: STAGE.handoverMarked, handoverMarkedAt: '2026-10-03T00:00:00.000Z' };
   assert.equal(confirmDeadline(state), '2026-10-05T00:00:00.000Z');
   assert.equal(confirmDeadline(initDealState(48)), null);
 });
 
 // ---------------------------------------------------------------------------
-// 3. Registry: anomali dihitung on-chain
+// 3. Registry: anomalies computed on-chain
 // ---------------------------------------------------------------------------
 
-test('registry: reserve kedua untuk VIN yang sama ditolak', () => {
+test('registry: a second reserve for the same VIN is rejected', () => {
   let record = initVinRecord('vin_hash_a', 'seller_1');
   record = recordListing(record, 'seller_1');
   record = recordReserve(record, 'deal_1');
@@ -197,7 +197,7 @@ test('registry: reserve kedua untuk VIN yang sama ditolak', () => {
   assert.equal(record.reservedByDeal, 'deal_2');
 });
 
-test('registry: anomali dihitung dari titik tertinggi, bukan angka terakhir', () => {
+test('registry: anomalies are computed from the high-water mark, not the last reading', () => {
   fc.assert(
     fc.property(fc.array(fc.integer({ min: 0, max: 50_000 }), { minLength: 1, maxLength: 25 }), (readings) => {
       let record = initVinRecord('vin_hash_b', 'seller_1');
@@ -214,7 +214,7 @@ test('registry: anomali dihitung dari titik tertinggi, bukan angka terakhir', ()
           at: `2026-10-03T0${index % 10}:00:00.000Z`,
         });
         const expected = runningMax >= 0 && odometerKm < runningMax;
-        assert.equal(anomaly, expected, `anomali salah pada pembacaan ${odometerKm} (max ${runningMax})`);
+        assert.equal(anomaly, expected, `wrong anomaly verdict for reading ${odometerKm} (max ${runningMax})`);
         if (expected) expectedAnomalies += 1;
         runningMax = Math.max(runningMax, odometerKm);
         record = next;
@@ -223,27 +223,27 @@ test('registry: anomali dihitung dari titik tertinggi, bukan angka terakhir', ()
       assert.equal(record.anomalies.length, expectedAnomalies);
       assert.equal(record.maxOdometer, runningMax);
       assert.equal(record.lastOdometer, readings[readings.length - 1]);
-      // Titik tertinggi tidak pernah turun, walau laporan terakhir lebih rendah.
+      // The high-water mark never drops, even when the latest report is lower.
       assert.ok((record.maxOdometer ?? 0) >= (record.lastOdometer ?? 0));
     }),
     { numRuns: 250 },
   );
 });
 
-test('registry: laporan rendah tidak boleh mereset dasar pembanding', () => {
+test('registry: a low report cannot reset the anomaly baseline', () => {
   let record = initVinRecord('vin_hash_c', 'seller_1');
   record = recordReserve(recordListing(record, 'seller_1'), 'deal_1');
   record = recordInspection(record, { dealId: 'deal_1', odometerKm: 80_000, reportHash: 'h1', at: '2026-10-03T00:00:00.000Z' }).record;
-  // Laporan curang: odometer turun drastis.
+  // A forged report: the odometer drops sharply.
   const forged = recordInspection(record, { dealId: 'deal_1', odometerKm: 30_000, reportHash: 'h2', at: '2026-10-03T01:00:00.000Z' });
   assert.equal(forged.anomaly, true);
-  assert.equal(forged.record.maxOdometer, 80_000, 'max tidak boleh turun ke 30.000');
-  // Laporan berikutnya tetap dibandingkan ke 80.000, bukan 30.000.
+  assert.equal(forged.record.maxOdometer, 80_000, 'the high-water mark must not fall to 30,000');
+  // The next report is still compared against 80,000, not 30,000.
   const third = recordInspection(forged.record, { dealId: 'deal_1', odometerKm: 50_000, reportHash: 'h3', at: '2026-10-03T02:00:00.000Z' });
-  assert.equal(third.anomaly, true, '50.000 masih di bawah titik tertinggi 80.000');
+  assert.equal(third.anomaly, true, '50,000 is still below the 80,000 high-water mark');
 });
 
-test('registry: laporan tidak bisa diterima selama anomali belum dilihat pembeli', () => {
+test('registry: a report cannot be accepted while the buyer has not seen the anomaly', () => {
   let record = initVinRecord('vin_hash_d', 'seller_1');
   record = recordReserve(recordListing(record, 'seller_1'), 'deal_1');
   record = recordInspection(record, { dealId: 'deal_1', odometerKm: 60_000, reportHash: 'h1', at: '2026-10-03T00:00:00.000Z' }).record;
@@ -255,12 +255,12 @@ test('registry: laporan tidak bisa diterima selama anomali belum dilihat pembeli
   const acknowledged = acknowledgeAnomaly(anomalous.record, 'buyer');
   assert.equal(acknowledged.anomalyPending, false);
   assert.doesNotThrow(() => assertCanAcceptReport(acknowledged));
-  // Catatan anomali tetap ada selamanya - tidak dihapus oleh pengakuan.
+  // The anomaly log stays forever — acknowledging does not delete it.
   assert.equal(acknowledged.anomalies.length, 1);
   assert.equal(acknowledged.anomalies[0]?.previousMax, 60_000);
 });
 
-test('registry: hanya pembeli yang boleh mengakui peringatan anomali', () => {
+test('registry: only the buyer may acknowledge an anomaly warning', () => {
   let record = initVinRecord('vin_hash_e', 'seller_1');
   record = recordReserve(recordListing(record, 'seller_1'), 'deal_1');
   record = recordInspection(record, { dealId: 'deal_1', odometerKm: 10_000, reportHash: 'h1', at: '2026-10-03T00:00:00.000Z' }).record;
@@ -268,7 +268,7 @@ test('registry: hanya pembeli yang boleh mengakui peringatan anomali', () => {
   assert.throws(() => acknowledgeAnomaly(record, 'not_buyer' as 'buyer'), /WRONG_ACTOR/);
 });
 
-test('registry: append-only - jumlah event tidak pernah berhenti bertambah', () => {
+test('registry: append-only — the event count never stops growing', () => {
   fc.assert(
     fc.property(fc.array(fc.integer({ min: 1, max: 99_999 }), { minLength: 1, maxLength: 15 }), (readings) => {
       let record = initVinRecord('vin_hash_f', 'seller_1');
@@ -300,7 +300,7 @@ test('registry: append-only - jumlah event tidak pernah berhenti bertambah', () 
       ];
       for (const step of steps) {
         step();
-        assert.ok(record.events > previousEvents, 'event harus selalu bertambah');
+        assert.ok(record.events > previousEvents, 'the event count must always grow');
         previousEvents = record.events;
       }
       assert.equal(record.events, steps.length);
@@ -309,7 +309,7 @@ test('registry: append-only - jumlah event tidak pernah berhenti bertambah', () 
   );
 });
 
-test('registry: sengketa & resolusi tercatat, dan health dihitung dari registry', () => {
+test('registry: disputes and resolutions are recorded, and health is computed from the registry', () => {
   let record = initVinRecord('vin_hash_g', 'seller_1');
   record = recordReserve(recordListing(record, 'seller_1'), 'deal_1');
   assert.throws(() => recordResolution(record), /NO_DISPUTE/);
@@ -326,22 +326,22 @@ test('registry: sengketa & resolusi tercatat, dan health dihitung dari registry'
   assert.equal(health.disputed, 0);
 });
 
-test('registry: laporan untuk deal yang tidak memegang reserve ditolak', () => {
+test('registry: a report for a deal that does not hold the reserve is rejected', () => {
   let record = initVinRecord('vin_hash_i', 'seller_1');
   record = recordReserve(recordListing(record, 'seller_1'), 'deal_1');
   assert.throws(
-    () => recordInspection(record, { dealId: 'deal_lain', odometerKm: 1000, reportHash: 'h', at: '2026-10-03T00:00:00.000Z' }),
+    () => recordInspection(record, { dealId: 'other_deal', odometerKm: 1000, reportHash: 'h', at: '2026-10-03T00:00:00.000Z' }),
     /NOT_RESERVED_BY_DEAL/,
   );
 });
 
-test('registry: listing tidak bisa didaftarkan dua kali untuk vinHash yang sama', () => {
+test('registry: a listing cannot be registered twice for the same vinHash', () => {
   const record = recordListing(initVinRecord('vin_hash_j', 'seller_1'), 'seller_1');
   assert.throws(() => recordListing(record, 'seller_1'), /LISTING_EXISTS/);
   assert.throws(() => recordListing(initVinRecord('vin_hash_k', 'seller_1'), 'seller_2'), /WRONG_SELLER/);
 });
 
-test('urutan: assertCallOrder mengembalikan aturan yang berlaku untuk audit', () => {
+test('order: assertCallOrder returns the rule in force, for audit', () => {
   const rule = assertCallOrder(initDealState(72), ACTION.lockStake, ctx('seller'));
   assert.equal(rule.to, STAGE.staked);
   assert.equal(rule.actor, 'seller');

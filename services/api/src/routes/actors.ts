@@ -13,7 +13,7 @@ export function actorRoutes(ctx: AppContext): Hono {
     const input = c.req.valid('json');
     const id = newId(input.role === 'inspector' ? 'insp' : 'act');
     const createdAt = nowIso();
-    // Verifikasi: pembeli cukup dasar; penjual/bengkel butuh identitas usaha.
+    // Verification: buyers need only the basic level; sellers/workshops need a business identity.
     const verification = input.role === 'buyer' ? 'basic' : 'none';
     run(
       ctx.db,
@@ -35,7 +35,7 @@ export function actorRoutes(ctx: AppContext): Hono {
     );
     run(ctx.db, 'INSERT INTO reputation (actor_id, role, last_computed_at) VALUES (?, ?, ?)', [id, input.role, createdAt]);
     const row = get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [id])!;
-    return c.json({ actor: serializeActor(row), note: 'Verifikasi identitas usaha diperlukan sebelum beroperasi di atas ambang nilai tertentu.' }, 201);
+    return c.json({ actor: serializeActor(row), note: 'Business identity verification is required before operating above a value threshold.' }, 201);
   });
 
   app.get('/actors', (c) => {
@@ -58,7 +58,7 @@ export function actorRoutes(ctx: AppContext): Hono {
 
   app.get('/actors/:id', (c) => {
     const row = get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [c.req.param('id')]);
-    if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Aktor tidak ditemukan' } }, 404);
+    if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } }, 404);
     const bonds = all(ctx.db, 'SELECT * FROM bonds WHERE actor_id = ? ORDER BY locked_at DESC', [row.id]);
     const reputation = get(ctx.db, 'SELECT * FROM reputation WHERE actor_id = ?', [row.id]);
     return c.json({
@@ -80,8 +80,8 @@ export function actorRoutes(ctx: AppContext): Hono {
   });
 
   /**
-   * Jaminan bengkel (dan dealer) dikunci dalam stablecoin dulu pada Tahap Bukti.
-   * Jaminan kembali bila deal bersih; terpotong bila pelanggaran.
+   * Workshop (and dealer) bonds are locked in stablecoin during the Proof Stage.
+   * The bond returns after a clean deal and is slashed on a violation.
    */
   app.post('/actors/:id/bonds', async (c) => {
     const actorId = c.req.param('id');
@@ -92,13 +92,13 @@ export function actorRoutes(ctx: AppContext): Hono {
       listingId?: string;
     };
     const actor = get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [actorId]);
-    if (!actor) return c.json({ error: { code: 'NOT_FOUND', message: 'Aktor tidak ditemukan' } }, 404);
+    if (!actor) return c.json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } }, 404);
 
     const purpose = body.purpose ?? (actor.role === 'inspector' ? 'inspection_capacity' : 'listing');
     const amount = body.amount ?? BONDS.inspectorBondUsdc;
     const currency = body.currency ?? 'USDC';
     if (Number(amount) <= 0) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Jumlah jaminan harus positif' } }, 400);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'The bond amount must be positive' } }, 400);
     }
 
     const id = newId('bond');
@@ -117,15 +117,15 @@ export function actorRoutes(ctx: AppContext): Hono {
       {
         bond: serializeBond(row),
         note:
-          'Jaminan hanya untuk kelayakan dan kapasitas. Token tidak membeli harga kendaraan dan tidak memberi bagi hasil.',
+          'Bonds are for eligibility and capacity only. The token never buys a vehicle price and pays no revenue share.',
       },
       201,
     );
   });
 
   /**
-   * Verifikasi identitas usaha oleh kurator koridor.
-   * Di produksi, langkah ini menghasilkan attestation yang bisa diverifikasi
+   * Business identity verification by the corridor curator.
+   * In production this step produces a verifiable attestation
    * (mis. Solana Attestation Service), bukan kolom basis data biasa.
    */
   app.post('/actors/:id/verify', async (c) => {
@@ -133,12 +133,12 @@ export function actorRoutes(ctx: AppContext): Hono {
     const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
     const caller = callerId ? get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [callerId]) : undefined;
     if (!caller || caller.role !== 'curator') {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya kurator koridor yang boleh memverifikasi identitas usaha' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only a corridor curator may verify business identities' } }, 403);
     }
     const body = (await c.req.json().catch(() => ({}))) as { level?: string; note?: string };
     const level = body.level ?? 'business_verified';
     if (!['basic', 'business_verified', 'suspended'].includes(level)) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Level verifikasi tidak dikenal' } }, 400);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Unknown verification level' } }, 400);
     }
     run(ctx.db, 'UPDATE actors SET verification = ? WHERE id = ?', [level, actorId]);
     run(ctx.db, 'INSERT INTO audit_log (id, action, actor_id, entity, entity_id, detail, created_at) VALUES (?,?,?,?,?,?,?)', [
@@ -151,27 +151,27 @@ export function actorRoutes(ctx: AppContext): Hono {
       nowIso(),
     ]);
     const row = get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [actorId]);
-    if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Aktor tidak ditemukan' } }, 404);
+    if (!row) return c.json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } }, 404);
     return c.json({
       actor: serializeActor(row),
-      note: 'Identitas bisa dicabut (suspend) bila ada pelanggaran. Penjual dan bengkel yang dicabut keluar dari pasar.',
+      note: 'An identity can be revoked (suspended) after a violation. Revoked sellers and workshops leave the market.',
     });
   });
 
   /**
-   * Afiliasi penjual-bengkel. Bengkel yang terafiliasi dengan penjual DIBLOKIR
-   * dari order unit penjual tersebut (konsep §2).
+   * Seller-workshop affiliation. A workshop affiliated with a seller is BLOCKED
+   * from that unit orders from that seller (concept §2).
    */
   app.post('/actors/:id/affiliations', async (c) => {
     const actorId = c.req.param('id');
     const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
     const caller = callerId ? get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [callerId]) : undefined;
     if (!caller || (caller.role !== 'curator' && caller.id !== actorId)) {
-      return c.json({ error: { code: 'FORBIDDEN', message: 'Hanya kurator koridor yang boleh mencatat afiliasi' } }, 403);
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Only a corridor curator may record affiliations' } }, 403);
     }
     const body = (await c.req.json().catch(() => ({}))) as { relatedActorId?: string; note?: string };
     if (!body.relatedActorId) {
-      return c.json({ error: { code: 'NOT_FOUND', message: 'relatedActorId wajib' } }, 400);
+      return c.json({ error: { code: 'NOT_FOUND', message: 'relatedActorId is required' } }, 400);
     }
     run(ctx.db, 'INSERT INTO audit_log (id, action, actor_id, entity, entity_id, detail, created_at) VALUES (?,?,?,?,?,?,?)', [
       newId('aud'),
@@ -182,10 +182,10 @@ export function actorRoutes(ctx: AppContext): Hono {
       JSON.stringify({ relatedActorId: body.relatedActorId, note: body.note ?? null }),
       nowIso(),
     ]);
-    return c.json({ ok: true, note: 'Afiliasi tercatat. Bengkel terafiliasi diblokir dari order penjual tersebut.' }, 201);
+    return c.json({ ok: true, note: 'Affiliation recorded. The affiliated workshop is blocked from that orders from that seller.' }, 201);
   });
 
-  /** Daftar afiliasi dipakai saat validasi pemilihan bengkel. */
+  /** The affiliation list is used when validating a workshop choice. */
   app.get('/actors/:id/affiliations', (c) => {
     const rows = all(
       ctx.db,

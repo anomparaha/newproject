@@ -1,10 +1,10 @@
 /**
  * Seed demo VIN.
  *
- * Skrip ini TIDAK menulis langsung ke basis data. Ia menjalankan API yang sama
+ * This script does NOT write to the database directly. It calls the same API
  * lalu memanggil endpoint-nya lewat HTTP, sehingga sekaligus menjadi uji integrasi
- * alur utama: listing -> escrow -> inspeksi -> serah terima -> nota, plus satu
- * kasus anomali kilometer + sengketa.
+ * the main flow: listing -> escrow -> inspection -> handover -> receipt, plus one
+ * odometer anomaly case that ends in a dispute.
  *
  * Pakai: npm run seed -- --reset
  */
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
 async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   const existing = await call<{ actors: Array<{ id: string; role: string }> }>(ctx, 'GET', '/api/actors');
   if (existing.actors.length > 0 && !reset) {
-    console.log(`[seed] sudah ada ${existing.actors.length} aktor. Jalankan "npm run seed -- --reset" untuk memulai ulang.`);
+    console.log(`[seed] ${existing.actors.length} actors already exist. Run "npm run seed:reset" to start over.`);
     return;
   }
 
@@ -99,7 +99,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   });
   const inspector1 = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'inspector',
-    displayName: 'Bengkel Inspeksi Nusantara',
+    displayName: 'Nusantara Inspection Workshop',
     email: 'inspeksi1@vin.demo',
     countryCode: 'ID',
     city: 'Jakarta',
@@ -126,21 +126,21 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     city: 'Singapore',
   });
 
-  // Verifikasi identitas usaha (kurator)
+  // Business identity verification (curator)
   await call(ctx, 'POST', `/api/actors/${seller.actor.id}/verify`, { level: 'business_verified' }, curator.actor.id);
   await call(ctx, 'POST', `/api/actors/${inspector1.actor.id}/verify`, { level: 'business_verified' }, curator.actor.id);
   await call(ctx, 'POST', `/api/actors/${inspector2.actor.id}/verify`, { level: 'business_verified' }, curator.actor.id);
 
-  // Afiliasi penjual <-> bengkel 2 (supaya diblokir dari order penjual ini)
+  // Seller <-> workshop 2 affiliation (so it is blocked from this orders from that seller)
   await call(
     ctx,
     'POST',
     `/api/actors/${seller.actor.id}/affiliations`,
-    { relatedActorId: inspector2.actor.id, note: 'Satu grup usaha dengan dealer' },
+    { relatedActorId: inspector2.actor.id, note: 'Same business group as the dealer' },
     curator.actor.id,
   );
 
-  // Jaminan bengkel
+  // Workshop bond
   for (const inspector of [inspector1, inspector2]) {
     await call(ctx, 'POST', `/api/actors/${inspector.actor.id}/bonds`, {
       amount: '25',
@@ -164,7 +164,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     location: 'Jakarta Selatan, Indonesia',
     priceAmount: '45000',
     priceCurrency: 'USDC',
-    shippingTerms: 'FOB Jakarta, ongkir ditanggung pembeli',
+    shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
     photoHashes: [hash(1), hash(2), hash(3)],
     bond: { amount: '50', currency: 'USDC' },
   });
@@ -179,7 +179,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     location: 'Jakarta Barat, Indonesia',
     priceAmount: '68000',
     priceCurrency: 'USDC',
-    shippingTerms: 'FOB Jakarta, ongkir ditanggung pembeli',
+    shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
     photoHashes: [hash(4), hash(5)],
     bond: { amount: '50', currency: 'USDC' },
   });
@@ -198,10 +198,10 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     photoHashes: [hash(6)],
   });
 
-  console.log(`[seed] 3 listing dibuat. Di bawah ambang koridor = tanpa jaminan (${listing3.listing.id}).`);
+  console.log(`[seed] 3 listings created. Below the corridor threshold = no bond (${listing3.listing.id}).`);
 
   // ---------------------------------------------------------------------
-  // Deal A: alur bersih sampai nota
+  // Deal A: a clean flow through to the receipt
   // ---------------------------------------------------------------------
   const dealA = await call<{ deal: { id: string } }>(
     ctx,
@@ -233,7 +233,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectedAt: new Date(Date.now() - 5 * 3600_000).toISOString(),
       reportHash: hash(11),
       dashboardPhotoHash: hash(12),
-      conditionSummary: 'Cat dasar rapi, tidak ada bekas tabrakan struktur. Ban 80%, AC dingin, riwayat servis lengkap.',
+      conditionSummary: 'Clean paintwork, no structural accident damage. Tyres at 80%, cold A/C, full service history.',
       standardVersion: 'vin-report-v1',
       checklist: {
         vin_matches_unit: true,
@@ -268,10 +268,10 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     undefined,
     seller.actor.id,
   );
-  console.log(`[seed] Deal A selesai. Nota ${completed.note.id} (evidence root ${completed.note.evidenceRoot.slice(0, 12)}...)`);
+  console.log(`[seed] Deal A completed. Receipt ${completed.note.id} (evidence root ${completed.note.evidenceRoot.slice(0, 12)}...)`);
 
   // ---------------------------------------------------------------------
-  // Deal B: anomali kilometer -> sengketa -> jaminan terpotong
+  // Deal B: odometer anomaly -> dispute -> bond slashed
   // ---------------------------------------------------------------------
   const dealB = await call<{ deal: { id: string } }>(
     ctx,
@@ -302,7 +302,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
       reportHash: hash(21),
       dashboardPhotoHash: hash(22),
-      conditionSummary: 'Odometer 45.000 km, lebih rendah dari catatan platform (68.000 km). Perlu penjelasan dokumen servis.',
+      conditionSummary: 'Odometer reads 45,000 km, below the platform record (68,000 km). Service documents need to explain the gap.',
       standardVersion: 'vin-report-v1',
       checklist: {
         vin_matches_unit: true,
@@ -321,7 +321,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     ctx,
     'POST',
     `/api/deals/${dealB.deal.id}/disputes`,
-    { openedBy: buyer.actor.id, reason: 'Penjual tidak menyerahkan unit pada tanggal yang disepakati dan tidak bisa menjelaskan selisih odometer.' },
+    { openedBy: buyer.actor.id, reason: 'The seller did not hand over the unit on the agreed date and could not explain the odometer gap.' },
     buyer.actor.id,
   );
   const resolved = await call<{ dispute: { outcome: string; bondSlashedAmount: string | null } }>(
@@ -331,14 +331,14 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     {
       arbiterId: arbiter.actor.id,
       outcome: 'bond_slashed',
-      arbiterNote: 'Penjual tidak menyerahkan unit. Dana kembali ke pembeli; jaminan terpotong dan masuk kas sengketa.',
+      arbiterNote: 'The seller did not hand over the unit. Funds return to the buyer; the bond is slashed into the dispute fund.',
     },
     arbiter.actor.id,
   );
-  console.log(`[seed] Sengketa diputus: ${resolved.dispute.outcome}, jaminan terpotong ${resolved.dispute.bondSlashedAmount}`);
+  console.log(`[seed] Dispute resolved: ${resolved.dispute.outcome}, bond slashed ${resolved.dispute.bondSlashedAmount}`);
 
   // ---------------------------------------------------------------------
-  // Deal C: berjalan (inspeksi belum ada laporan)
+  // Deal C: in progress (inspection has no report yet)
   // ---------------------------------------------------------------------
   const dealC = await call<{ deal: { id: string } }>(
     ctx,
@@ -360,7 +360,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     'x-demo-backdate-hours': '2',
   });
 
-  // Reputasi dihitung ulang dari event
+  // Reputation is recomputed from events
   recomputeAll(db);
 
   const seedFile = `${REPO_ROOT}/.data/seed.json`;
@@ -385,7 +385,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   };
   writeFileSync(seedFile, JSON.stringify(payload, null, 2));
   console.log(`[seed] ID demo ditulis ke ${seedFile}`);
-  console.log('[seed] Buka GET /api/vin/JTDKAMFU1M3123456 untuk melihat rangkaian event per VIN.');
+  console.log('[seed] Open GET /api/vin/JTDKAMFU1M3123456 to view the event chain per VIN.');
 }
 
 main()
@@ -394,6 +394,6 @@ main()
     process.exitCode = 1;
   })
   .finally(() => {
-    // Database ditutup oleh proses; hindari handle terbuka yang menahan exit.
+    // The process closes the database; avoid open handles that block exit.
     setTimeout(() => process.exit(process.exitCode ?? 0), 50);
   });

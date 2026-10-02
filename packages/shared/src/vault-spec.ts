@@ -1,13 +1,13 @@
 /**
- * MODEL LEDGER ESCROW — cerminan aturan program `programs/vin-anchor/src/lib.rs`.
+ * ESCROW LEDGER MODEL — mirrors the rules of `programs/vin-anchor/src/lib.rs`.
  *
- * Kenapa file ini ada:
+ * Why this file exists:
  *  -------------------
- *  Aturan uang on-chain harus bisa diuji di lingkungan mana pun, termasuk di CI
- *  yang tidak punya toolchain Solana. Modul ini adalah model murni (tanpa I/O)
- *  yang memetakan SATU-LAWAN-SATU fungsi program Anchor:
+ *  On-chain money rules must be testable in any environment, including CI
+ *  without a Solana toolchain. This module is a pure model (no I/O) that maps
+ *  ONE-TO-ONE to the Anchor program's functions:
  *
- *    Rust (program)            -> model ini
+ *    Rust (program)            -> this model
  *    ---------------------------------------------------------------
  *    open_deal                 -> openDeal()
  *    fund_leg(leg, amount)     -> fundLeg(leg, amount)
@@ -15,19 +15,19 @@
  *    refund_leg(leg, ...)      -> refundLeg(leg)
  *    freeze_deal(...)          -> freezeDeal()
  *    resolve_dispute(...)      -> resolveDispute(decision, ...)
- *    slash_bond(...)           -> slashBondToDisputeFund(amount)  (→ kas sengketa)
+ *    slash_bond(...)           -> slashBondToDisputeFund(amount)  (-> dispute fund)
  *
- *  Setiap aturan yang dijaga di sini punya padanannya di Rust. Uji properti di
- *  `tests/vault.property.test.ts` menyerang model ini dengan kombinasi acak
- *  (fus, over-release, double refund, resolve berulang) supaya invariannya
- *  terbukti, bukan hanya diyakini.
+ *  Every rule guarded here has a counterpart in Rust. The property tests in
+ *  `tests/vault.property.test.ts` attack this model with random combinations
+ *  (fuzzed amounts, over-release, double refund, repeated resolutions) so its
+ *  invariants are proven, not just assumed.
  *
- *  INVARIAN yang dijaga:
- *   1. Tidak ada leg yang dilepas melebihi jumlah yang dikunci (OverRelease).
- *   2. Deal yang dibekukan (frozen) menolak pelepasan dan pengembalian dana.
- *   3. Setelah putusan, SALDO KEDUA LEG TEPAT NOL — tidak ada dana tersangkut.
- *   4. Potongan jaminan masuk KAS SENGKETA, tidak pernah ke admin/relayer.
- *   5. Penerima fee hanya boleh alamat treasury yang dikunci di konfigurasi.
+ *  INVARIANTS enforced:
+ *   1. No leg releases more than it locked (OverRelease).
+ *   2. A frozen deal rejects both release and refund.
+ *   3. After a ruling, BOTH LEGS SIT EXACTLY AT ZERO — no stranded funds.
+ *   4. A slashed bond goes to the DISPUTE FUND, never to an admin or relayer.
+ *   5. The fee recipient can only be the treasury address locked in config.
  */
 
 export const LEG = { vehicle: 0, inspection: 1 } as const;
@@ -48,9 +48,9 @@ export class VaultError extends Error {
 }
 
 export interface VaultConfig {
-  /** Pemilik token account penerima fee platform. */
+  /** Owner of the token account that receives the platform fee. */
   feeTreasury: string;
-  /** Pemilik token account kas sengketa. */
+  /** Owner of the token account that holds the dispute fund. */
   disputeFund: string;
   arbiter: string;
   relayer: string;
@@ -61,18 +61,18 @@ export interface VaultState {
   buyer: string;
   seller: string;
   inspector: string;
-  /** Jumlah yang dikunci saat deal dibuka. */
+  /** Amounts locked when the deal opened. */
   locked: { vehicle: bigint; inspection: bigint };
-  /** Berapa yang sudah keluar dari setiap leg. */
+  /** How much has left each leg. */
   released: { vehicle: bigint; inspection: bigint };
   frozen: boolean;
   cancelled: boolean;
   completed: boolean;
-  /** Saldo di luar vault: untuk audit, harus selalu konsisten. */
+  /** Off-vault balances: for audit, these must always add up. */
   balances: Record<string, bigint>;
-  /** Kas sengketa, hanya bertambah dari potongan jaminan. */
+  /** Dispute fund: only ever grows from slashed bonds. */
   disputeFundBalance: bigint;
-  /** Jaminan yang masih terkunci per aktor. */
+  /** Bonds still locked, per actor. */
   bonds: Record<string, bigint>;
 }
 
@@ -99,8 +99,8 @@ export function createVaultState(input: {
     frozen: false,
     cancelled: false,
     completed: false,
-    // Saat pembeli mendanai, saldo berpindah ke vault. Kita catat dari sisi
-    // vault supaya uji bisa mengecek "tidak ada dana yang hilang".
+    // When the buyer funds, balances move into the vault. We record them from
+    // the vault's side so tests can assert that no money disappeared.
     balances: {
       [input.buyer]: -input.vehicleAmount - input.inspectionAmount,
       [input.seller]: 0n,
@@ -117,15 +117,15 @@ function credit(state: VaultState, who: string, amount: bigint): void {
   state.balances.vault = (state.balances.vault ?? 0n) - amount;
 }
 
-/** Sisa setiap leg yang masih bisa dipindahkan. */
+/** What is still movable on a given leg. */
 export function remaining(state: VaultState, leg: Leg): bigint {
   const key = leg === LEG.vehicle ? 'vehicle' : 'inspection';
   return state.locked[key] - state.released[key];
 }
 
 export function fundLeg(_state: VaultState, _leg: Leg, amount: bigint): void {
-  // Pendanaan sudah tercermin di balances saat openDeal; di sini hanya penjagaan
-  // batas atas seperti `OverFunded` di program.
+  // Funding is already reflected in balances by openDeal; what matters here is
+  // the upper bound guard, like `OverFunded` in the program.
   if (amount <= 0n) throw new VaultError('ZeroAmount');
   if (amount > remaining(_state, _leg) + _state.released[_leg === LEG.vehicle ? 'vehicle' : 'inspection']) {
     throw new VaultError('OverFunded');
@@ -139,7 +139,7 @@ export function freezeDeal(state: VaultState, caller: string): void {
   state.frozen = true;
 }
 
-/** Pelepasan dana satu leg. Padanan `release_leg`. */
+/** Release one leg. Counterpart of `release_leg`. */
 export function releaseLeg(state: VaultState, leg: Leg, amount: bigint, recipient: string): void {
   if (amount <= 0n) throw new VaultError('ZeroAmount');
   if (state.frozen) throw new VaultError('DealFrozen');
@@ -151,17 +151,17 @@ export function releaseLeg(state: VaultState, leg: Leg, amount: bigint, recipien
   state.released[key] += amount;
   credit(state, recipient, amount);
 
-  // Deal SELESAI ketika kedua leg terlepas penuh -> inilah yang membuka
-  // pencatatan nota (`record_note` mensyaratkan completed || cancelled).
+  // The deal is COMPLETE once both legs are fully released — this is what opens
+  // receipt recording (`record_note` requires completed || cancelled).
   if (state.released.vehicle === state.locked.vehicle && state.released.inspection === state.locked.inspection) {
     state.completed = true;
   }
 }
 
-/** Pengembalian dana satu leg ke pembeli. Padanan `refund_leg`. */
+/** Refund one leg back to the buyer. Counterpart of `refund_leg`. */
 export function refundLeg(state: VaultState, leg: Leg): void {
-  // Deal yang dibekukan tidak boleh di-refund: kalau tidak, relayer bisa
-  // melewati arbitrase dan pembekuan sengketa kehilangan artinya.
+  // A frozen deal must not be refundable: otherwise a relayer could route around
+  // arbitration and the freeze would mean nothing.
   if (state.frozen) throw new VaultError('DealFrozen');
   if (state.completed) throw new VaultError('DealCompleted');
   if (state.cancelled) throw new VaultError('DealCancelled');
@@ -171,16 +171,16 @@ export function refundLeg(state: VaultState, leg: Leg): void {
   state.released[key] += amount;
   credit(state, state.buyer, amount);
 
-  // Kedua leg sudah kembali ke pembeli -> deal ditutup sebagai dibatalkan.
+  // Both legs are back with the buyer -> the deal closes as cancelled.
   if (state.released.vehicle === state.locked.vehicle && state.released.inspection === state.locked.inspection) {
     state.cancelled = true;
   }
 }
 
 /**
- * Putusan arbitrase. Padanan `resolve_dispute`.
- * Akuntansi harus tepat habis: leg kendaraan `toBuyer + toSeller == sisa`,
- * leg inspeksi `toInspector <= sisa` dan sisanya kembali ke pembeli.
+ * Arbitration ruling. Counterpart of `resolve_dispute`.
+ * Accounting must be exact: vehicle leg `toBuyer + toSeller == remaining`,
+ * inspection leg `toInspector <= remaining` with the rest back to the buyer.
  */
 export function resolveDispute(state: VaultState, config: VaultConfig, caller: string, input: ResolveInput): void {
   if (caller !== config.arbiter) throw new VaultError('Unauthorized');
@@ -219,7 +219,7 @@ export function resolveDispute(state: VaultState, config: VaultConfig, caller: s
   if (refundToBuyer > 0n) credit(state, state.buyer, refundToBuyer);
   state.released.inspection += input.toInspector + refundToBuyer;
 
-  // Invarian: tidak ada dana tersangkut setelah putusan.
+  // Invariant: nothing is stranded after the ruling.
   if (state.released.vehicle !== state.locked.vehicle) throw new VaultError('InexactSettlement');
   if (state.released.inspection !== state.locked.inspection) throw new VaultError('InexactSettlement');
 
@@ -232,11 +232,11 @@ export function resolveDispute(state: VaultState, config: VaultConfig, caller: s
 }
 
 /**
- * Potongan jaminan -> KAS SENGKETA. Tidak pernah ke admin/relayer.
+ * Slashed bond -> DISPUTE FUND. Never to an admin or relayer.
  *
- * Namanya berbeda dari `slashBond` di `money.ts` yang hanya MENGHITUNG pembagian
- * potongan (kalkulator murni). Fungsi ini benar-benar memindahkan saldo di model
- * ledger, sesuai `slash_bond` di program Anchor.
+ * The name differs from `slashBond` in `money.ts`, which only COMPUTES the split
+ * (a pure calculator). This function actually moves balances in the ledger
+ * model, matching `slash_bond` in the Anchor program.
  */
 export function slashBondToDisputeFund(
   state: VaultState,
@@ -260,20 +260,20 @@ export function lockBond(state: VaultState, actor: string, amount: bigint): void
 }
 
 /**
- * Apakah nota boleh dicatat? Padanan `require!(deal.completed || deal.cancelled)`
- * di instruksi `record_note`.
+ * May the receipt be recorded? Counterpart of `require!(deal.completed ||
+ * deal.cancelled)` in the `record_note` instruction.
  */
 export function canRecordNote(state: VaultState): boolean {
   return state.completed || state.cancelled;
 }
 
-/** Uang konservatif: total saldo semua pihak harus selalu nol (double-entry). */
+/** Conservative money rule: the sum of all balances must always be zero (double entry). */
 export function ledgerSumsToZero(state: VaultState): boolean {
   const total = Object.values(state.balances).reduce((acc, value) => acc + value, 0n) + state.disputeFundBalance;
   return total === 0n;
 }
 
-/** Fee dari leg, dibatasi bps. Padanan pemeriksaan `max_fee` di program. */
+/** Fee on a leg, capped by bps. Counterpart of the `max_fee` check in the program. */
 export function platformFee(config: VaultConfig, leg: Leg, amount: bigint): bigint {
   const bps = leg === LEG.vehicle ? config.feeBps.vehicle : config.feeBps.inspection;
   if (bps < 0 || bps > 1_000) throw new VaultError('FeeTooHigh');

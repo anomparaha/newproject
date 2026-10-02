@@ -1,9 +1,9 @@
 /**
- * State machine deal VIN.
+ * VIN deal state machine.
  *
- * Yang menentukan perpindahan status hanyalah EVENT, bukan update kolom diam-diam.
- * Semua fungsi di modul ini murni (pure) supaya bisa dipakai backend, frontend,
- * maupun pengujian tanpa basis data.
+ * Only EVENTS move the state; nothing else silently updates a column. Every
+ * function here is pure, so the API, the frontend, and the tests can all use it
+ * without a database.
  */
 
 import type { DealState, EventType } from './types.js';
@@ -34,8 +34,8 @@ export const DEAL_TRANSITIONS: Record<DealAction, TransitionRule> = {
   escrow_funded: { from: ['escrow_pending'], to: 'inspecting', actor: 'platform' },
   inspector_uploads_report: { from: ['inspecting'], to: 'inspecting', actor: 'inspector' },
   buyer_accepts_report: { from: ['inspecting'], to: 'inspection_accepted', actor: 'buyer' },
-  // Sesuai konsep §3: bila laporan tidak diterima/ditolak dalam batas waktu,
-  // dana inspeksi tetap boleh lepas bila laporan memenuhi standar.
+  // Concept §3: if nobody accepts or rejects the report in time, inspection funds
+  // may still release once the report meets the standard.
   deadline_elapsed: { from: ['inspecting'], to: 'inspection_accepted', actor: 'platform' },
   handover_confirmed: { from: ['inspection_accepted'], to: 'handover_pending', actor: 'buyer' },
   vehicle_released: { from: ['handover_pending'], to: 'completed', actor: 'platform' },
@@ -58,13 +58,13 @@ export interface TransitionCheck {
 export function canTransition(current: DealState, action: DealAction): TransitionCheck {
   const rule = DEAL_TRANSITIONS[action];
   if (!rule) {
-    return { ok: false, state: current, reason: `Aksi tidak dikenal: ${action}` };
+    return { ok: false, state: current, reason: `Unknown action: ${action}` };
   }
   if (current === 'frozen' && action !== 'arbiter_resolves_refund' && action !== 'arbiter_resolves_release') {
     return {
       ok: false,
       state: current,
-      reason: 'Escrow dan nota dibekukan. Keputusan arbitrase diperlukan sebelum langkah lain.',
+      reason: 'Escrow and receipt are frozen. An arbitration ruling is required before anything else.',
     };
   }
   if (rule.from.includes(current)) {
@@ -73,11 +73,11 @@ export function canTransition(current: DealState, action: DealAction): Transitio
   return {
     ok: false,
     state: current,
-    reason: `Tidak bisa "${action}" dari status ${current}.`,
+    reason: `Cannot run "${action}" from state ${current}.`,
   };
 }
 
-/** Event yang WAJIB ada agar dana kendaraan boleh cair (kontrol §10). */
+/** Events that MUST exist before vehicle funds may be released (control §10). */
 export function vehicleReleasePreconditions(input: {
   handoverTerms: string;
   confirmedBy: string[];
@@ -86,19 +86,19 @@ export function vehicleReleasePreconditions(input: {
   disputeOpen: boolean;
 }): { ok: boolean; missing: string[] } {
   const missing: string[] = [];
-  if (input.disputeOpen) missing.push('sengketa_masih_terbuka');
+  if (input.disputeOpen) missing.push('dispute_still_open');
   if (input.confirmedBy.length === 0) {
-    missing.push('syarat_serah_terima_belum_terkonfirmasi');
+    missing.push('handover_terms_not_confirmed');
   }
-  const needsBoth = input.handoverTerms.toLowerCase().includes('konfirmasi kedua pihak');
+  const needsBoth = input.handoverTerms.toLowerCase().includes('both parties');
   if (needsBoth) {
-    if (!input.confirmedBy.includes(input.buyerId)) missing.push('konfirmasi_pembeli');
-    if (!input.confirmedBy.includes(input.sellerId)) missing.push('konfirmasi_penjual');
+    if (!input.confirmedBy.includes(input.buyerId)) missing.push('buyer_confirmation');
+    if (!input.confirmedBy.includes(input.sellerId)) missing.push('seller_confirmation');
   }
   return { ok: missing.length === 0, missing };
 }
 
-/** Event yang WAJIB ada agar dana inspeksi boleh cair. */
+/** Events that MUST exist before inspection funds may be released. */
 export function inspectionReleasePreconditions(input: {
   reportUploaded: boolean;
   reportMeetsStandard: boolean;
@@ -106,15 +106,15 @@ export function inspectionReleasePreconditions(input: {
   deadlineElapsed: boolean;
 }): { ok: boolean; missing: string[] } {
   const missing: string[] = [];
-  if (!input.reportUploaded) missing.push('laporan_belum_diunggah');
-  if (!input.reportMeetsStandard) missing.push('laporan_tidak_memenuhi_standar');
+  if (!input.reportUploaded) missing.push('report_not_uploaded');
+  if (!input.reportMeetsStandard) missing.push('report_below_standard');
   if (!input.buyerAccepted && !input.deadlineElapsed) {
-    missing.push('pembeli_belum_menerima_dan_batas_waktu_belum_lewat');
+    missing.push('buyer_has_not_accepted_and_deadline_not_passed');
   }
   return { ok: missing.length === 0, missing };
 }
 
-/** Anomali kilometer tidak pernah otomatis menolak - hanya peringatan. */
+/** An odometer anomaly never auto-rejects a deal — it is a warning only. */
 export function odometerIsAnomaly(currentKm: number, previousKm: number | null): boolean {
   if (previousKm === null) return false;
   return currentKm < previousKm;
@@ -127,9 +127,9 @@ export function eventForAction(action: DealAction): EventType | null {
     case 'inspector_uploads_report':
       return 'report_uploaded';
     case 'buyer_accepts_report':
-      return 'inspeksi_dana_lepas';
+      return 'inspection_funds_released';
     case 'vehicle_released':
-      return 'kendaraan_dana_lepas';
+      return 'vehicle_funds_released';
     case 'open_dispute':
       return 'dispute_opened';
     case 'arbiter_resolves_refund':
@@ -141,12 +141,12 @@ export function eventForAction(action: DealAction): EventType | null {
 }
 
 export const DEAL_STATE_LABEL: Record<DealState, string> = {
-  draft: 'Draft - listing tayang, belum ada pembeli',
-  escrow_pending: 'Escrow menunggu pendanaan',
-  inspecting: 'Inspeksi berjalan',
-  inspection_accepted: 'Laporan diterima, menunggu serah terima',
-  handover_pending: 'Serah terima dikonfirmasi, menunggu pelepasan dana',
-  completed: 'Selesai - nota tercatat',
-  frozen: 'Dibekukan - sengketa berjalan',
-  cancelled: 'Dibatalkan',
+  draft: 'Draft — listing is live, no buyer yet',
+  escrow_pending: 'Escrow awaiting funding',
+  inspecting: 'Inspection in progress',
+  inspection_accepted: 'Report accepted, waiting for handover',
+  handover_pending: 'Handover confirmed, waiting for fund release',
+  completed: 'Completed — receipt recorded',
+  frozen: 'Frozen — dispute in progress',
+  cancelled: 'Cancelled',
 };
