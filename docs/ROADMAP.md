@@ -15,6 +15,7 @@ menambah fitur atau menambah utilitas token.
 - [x] Event log append-only dengan nomor urut per VIN.
 - [x] 11 uji aturan inti + seed yang berfungsi sebagai uji integrasi alur penuh.
 - [x] Program Anchor (belum dikompilasi): escrow dua vault, jaminan, arbiter, registri nota.
+      Uji siap-jalan + temuan review: `docs/PROGRAM.md`.
 
 **Belum ada**
 

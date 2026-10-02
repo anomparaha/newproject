@@ -20,8 +20,9 @@ Jujur di depan, supaya tidak ada klaim palsu:
 - **Alur penuh lolos uji integrasi**: listing → escrow → inspeksi → laporan → penerimaan pembeli →
   serah terima → pelepasan dana kendaraan → nota tercatat, plus satu kasus **anomali kilometer**
   yang berujung **sengketa** dan **jaminan terpotong** (`npm run seed:reset`).
-- **11 uji aturan inti** (`npm test`): aritmetika uang desimal, state machine, prasyarat pelepasan
-  dana, anomali odometer, potongan jaminan.
+- **20 uji** (`npm test`): 11 uji aturan inti (aritmetika uang desimal, state machine, prasyarat
+  pelepasan dana, anomali odometer, potongan jaminan) + **9 uji properti** untuk model ledger escrow
+  (ribuan kombinasi acak: fus over-release, double refund, putusan tidak tepat habis, bypass pembekuan).
 - Frontend Next.js: dasbor, listing, konsol deal, halaman VIN, pasar inspeksi, koridor, kebijakan.
   Aksi tombol (danai escrow, unggah laporan, terima laporan, serah terima, lepas dana, sengketa,
   putusan arbiter) memanggil API sungguhan.
@@ -29,8 +30,12 @@ Jujur di depan, supaya tidak ada klaim palsu:
 **Belum jalan / belum diverifikasi**
 
 - `programs/vin-anchor/` (Rust + Anchor) — **belum dikompilasi maupun di-deploy**. Toolchain Rust dan
-  Solana tidak tersedia di lingkungan pengembangan ini. Jalankan `anchor build && anchor test`
-  sebelum mengklaim apa pun tentang dana on-chain.
+  Solana tidak tersedia di lingkungan pengembangan ini (host rust-lang/crates.io diblokir di sandbox).
+  Jalankan `anchor build && anchor test` sebelum mengklaim apa pun tentang dana on-chain.
+  Rinciannya, termasuk **3 temuan review yang sudah diperbaiki** dan daftar yang belum ada:
+  **`docs/PROGRAM.md`**.
+- Selama program belum di-deploy, aturan vault tetap diuji lewat **model ledger TypeScript**
+  (`packages/shared/src/vault-spec.ts`) dengan uji properti — lihat `npm test`.
 - Escrow yang berjalan sekarang adalah `MockEscrowProvider` (meniru ledger penyedia berizin).
   Belum ada uang nyata bergerak di mana pun.
 - **Belum ada NFT yang dicetak.** `note_completed` mencatat `noteAssetId: null` dan metadata nota
@@ -151,6 +156,7 @@ Rincian pekerjaan, gate, dan checklist mainnet: **`docs/ROADMAP.md`**.
 - `docs/TECH_STACK.md` — pilihan teknologi + jawaban Rust/Go.
 - `docs/API.md` — referensi endpoint.
 - `docs/ROADMAP.md` — tahapan, gate, checklist produksi & mainnet.
+- `docs/PROGRAM.md` — referensi smart contract: akun, instruksi, invarian, temuan review, yang belum ada.
 - `docs/DEPLOYMENT.md` — deploy MVP, kesiapan dana nyata, dan cara menghidupkan jalur on-chain.
 - `docs/LEGAL.md` — batas hukum, kepatuhan, dan apa yang **tidak boleh** dipublikasikan.
 

@@ -26,7 +26,7 @@ jobs:
       - name: Typecheck (shared, api, web)
         run: npm run typecheck
 
-      - name: Uji aturan inti
+      - name: Uji aturan inti + uji properti ledger escrow
         run: npm test
 
       - name: Seed data demo (sekaligus uji integrasi alur penuh)

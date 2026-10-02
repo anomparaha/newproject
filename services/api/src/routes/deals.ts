@@ -45,6 +45,69 @@ function lockedBondTotal(db: AppContext['db'], actorId: string, purpose: string)
   return Number(row?.total ?? 0);
 }
 
+/**
+ * Menyelesaikan LEG INSPEKSI saat sengketa diputus.
+ *
+ * Aturan yang sama dengan `resolve_dispute` di program Anchor:
+ *  - bila bengkel sudah mengunggah laporan, bengkel TETAP dibayar (mereka sudah
+ *    bekerja) setelah fee platform dipotong;
+ *  - bila belum ada laporan, dana inspeksi kembali ke pembeli.
+ *
+ * Tanpa langkah ini, dana inspeksi bisa tersangkut atau bengkel tidak dibayar
+ * ketika sengketa tidak berpihak pada penjual.
+ */
+async function settleInspectionLeg(
+  ctx: AppContext,
+  deal: Record<string, unknown>,
+  dealId: string,
+  arbiterId: string,
+): Promise<{ toInspector: string; toBuyer: string; currency: string }> {
+  const currency = String(deal.inspection_fee_currency);
+  const escrow = ctx.escrow.findById(String(deal.escrow_ref_inspection));
+  // Escrow bisa berstatus `frozen` karena sengketa; putusan arbiter justru
+  // satu-satunya jalur yang boleh memindahkan dana dari kondisi itu.
+  if (!escrow || (escrow.status !== 'funded' && escrow.status !== 'frozen')) {
+    return { toInspector: '0', toBuyer: '0', currency };
+  }
+  const report = get(ctx.db, 'SELECT id FROM inspection_reports WHERE deal_id = ? LIMIT 1', [dealId]);
+  const evidence = eventsForDeal(ctx.db, dealId).map((e) => e.id);
+  const amount = String(deal.inspection_fee_amount);
+
+  if (report) {
+    const fee = bpsFee(amount, FEES.inspectionBps, currency);
+    const toInspector = fromMinorUnits(toMinorUnits(amount, currency) - toMinorUnits(fee, currency), currency);
+    // Leg inspeksi dibayarkan lewat jalur arbitrase karena escrow sedang beku.
+    await ctx.escrow.resolveByArbitration(escrow.id, {
+      decision: 'refund_buyer',
+      toBuyer: '0',
+      toCounterparty: toInspector,
+      evidenceEventIds: evidence,
+    });
+    run(
+      ctx.db,
+      'INSERT INTO audit_log (id, action, actor_id, entity, entity_id, detail, created_at) VALUES (?,?,?,?,?,?,?)',
+      [
+        newId('aud'),
+        'dispute_inspection_paid',
+        arbiterId,
+        'deal',
+        dealId,
+        JSON.stringify({ toInspector, platformFee: fee, reason: 'laporan sudah diunggah sebelum sengketa' }),
+        nowIso(),
+      ],
+    );
+    return { toInspector, toBuyer: '0', currency };
+  }
+
+  await ctx.escrow.resolveByArbitration(escrow.id, {
+    decision: 'refund_buyer',
+    toBuyer: amount,
+    toCounterparty: '0',
+    evidenceEventIds: evidence,
+  });
+  return { toInspector: '0', toBuyer: amount, currency };
+}
+
 export function dealRoutes(ctx: AppContext): Hono {
   const app = new Hono();
   const { db } = ctx;
@@ -679,38 +742,56 @@ export function dealRoutes(ctx: AppContext): Hono {
     let bondSlashedAmount = input.bondSlashedAmount ?? null;
     let finalState: 'completed' | 'cancelled' = 'completed';
 
+    let inspectionSettlement: { toInspector: string; toBuyer: string; currency: string } | null = null;
+
     if (input.outcome === 'refund_buyer') {
-      if (vehicleEscrow) await ctx.escrow.refund(vehicleEscrow.id, input.arbiterNote);
-      if (inspectionEscrow && inspectionEscrow.status === 'funded') {
-        await ctx.escrow.refund(inspectionEscrow.id, 'Laporan batal karena sengketa');
+      if (vehicleEscrow) {
+        await ctx.escrow.resolveByArbitration(vehicleEscrow.id, {
+          decision: 'refund_buyer',
+          toBuyer: String(deal.price_amount),
+          toCounterparty: '0',
+          evidenceEventIds: evidence,
+        });
       }
+      inspectionSettlement = await settleInspectionLeg(ctx, deal, dealId, input.arbiterId);
       refundedAmount = refundedAmount ?? String(deal.price_amount);
       finalState = 'cancelled';
     } else if (input.outcome === 'release_to_seller') {
       if (vehicleEscrow) {
-        await ctx.escrow.release(vehicleEscrow.id, {
-          recipientRef: String(deal.seller_id),
+        await ctx.escrow.resolveByArbitration(vehicleEscrow.id, {
+          decision: 'release_to_seller',
+          toBuyer: '0',
+          toCounterparty: String(deal.price_amount),
           evidenceEventIds: evidence,
         });
       }
-      if (inspectionEscrow && inspectionEscrow.status === 'funded') {
-        await ctx.escrow.release(inspectionEscrow.id, {
-          recipientRef: String(deal.inspector_id),
-          evidenceEventIds: evidence,
-        });
-      }
+      inspectionSettlement = await settleInspectionLeg(ctx, deal, dealId, input.arbiterId);
       releasedAmount = releasedAmount ?? String(deal.price_amount);
     } else if (input.outcome === 'split') {
       const toBuyer = input.refundedAmount ?? '0';
       const toSeller = input.releasedAmount ?? String(deal.price_amount);
       if (vehicleEscrow) {
-        await ctx.escrow.partialRelease(vehicleEscrow.id, { toBuyer, toSeller }, evidence);
+        await ctx.escrow.resolveByArbitration(vehicleEscrow.id, {
+          decision: 'split',
+          toBuyer,
+          toCounterparty: toSeller,
+          evidenceEventIds: evidence,
+        });
       }
+      inspectionSettlement = await settleInspectionLeg(ctx, deal, dealId, input.arbiterId);
       refundedAmount = toBuyer;
       releasedAmount = toSeller;
     } else {
       // bond_slashed: penjual gagal menyerahkan unit -> pembeli kembali, jaminan terpotong.
-      if (vehicleEscrow) await ctx.escrow.refund(vehicleEscrow.id, input.arbiterNote);
+      if (vehicleEscrow) {
+        await ctx.escrow.resolveByArbitration(vehicleEscrow.id, {
+          decision: 'bond_slashed',
+          toBuyer: String(deal.price_amount),
+          toCounterparty: '0',
+          evidenceEventIds: evidence,
+        });
+      }
+      inspectionSettlement = await settleInspectionLeg(ctx, deal, dealId, input.arbiterId);
       const bond = get(
         db,
         `SELECT * FROM bonds WHERE actor_id = ? AND purpose = 'listing' AND state = 'locked' ORDER BY locked_at DESC LIMIT 1`,
@@ -777,7 +858,10 @@ export function dealRoutes(ctx: AppContext): Hono {
         refundedAmount: refundedAmount ?? undefined,
         releasedAmount: releasedAmount ?? undefined,
         bondSlashedAmount: bondSlashedAmount ?? undefined,
-        arbiterNote: input.arbiterNote,
+        arbiterNote:
+          inspectionSettlement && inspectionSettlement.toInspector !== '0'
+            ? `${input.arbiterNote} | Inspeksi dibayar ${inspectionSettlement.toInspector} ${inspectionSettlement.currency}`
+            : input.arbiterNote,
       },
       actorId: input.arbiterId,
       actorRole: 'arbiter',

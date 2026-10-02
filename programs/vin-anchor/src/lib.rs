@@ -48,6 +48,7 @@ pub mod vin_anchor {
         ctx: Context<InitializeConfig>,
         arbiter: Pubkey,
         relayer: Pubkey,
+        fee_treasury: Pubkey,
         fee_bps_vehicle: u16,
         fee_bps_inspection: u16,
     ) -> Result<()> {
@@ -57,6 +58,9 @@ pub mod vin_anchor {
         config.admin = ctx.accounts.admin.key();
         config.arbiter = arbiter;
         config.relayer = relayer;
+        // Fee hanya bisa masuk ke alamat treasury yang dikunci di config.
+        // Relayer tidak boleh mengarahkan fee ke dompetnya sendiri.
+        config.fee_treasury = fee_treasury;
         config.dispute_fund = ctx.accounts.dispute_fund.key();
         config.fee_bps_vehicle = fee_bps_vehicle;
         config.fee_bps_inspection = fee_bps_inspection;
@@ -65,11 +69,13 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Admin (multisig) dapat mengganti relayer dan arbiter, serta menjeda program.
+    /// Admin (multisig) dapat mengganti relayer, arbiter, treasury fee, dan
+    /// menjeda program. Tidak ada instruksi yang bisa memindahkan dana ke admin.
     pub fn set_authorities(
         ctx: Context<AdminOnly>,
         relayer: Option<Pubkey>,
         arbiter: Option<Pubkey>,
+        fee_treasury: Option<Pubkey>,
         paused: Option<bool>,
     ) -> Result<()> {
         let config = &mut ctx.accounts.config;
@@ -78,6 +84,9 @@ pub mod vin_anchor {
         }
         if let Some(arbiter) = arbiter {
             config.arbiter = arbiter;
+        }
+        if let Some(fee_treasury) = fee_treasury {
+            config.fee_treasury = fee_treasury;
         }
         if let Some(paused) = paused {
             config.paused = paused;
@@ -267,13 +276,13 @@ pub mod vin_anchor {
         amount: u64,
         evidence_hash: [u8; 32],
         platform_fee_amount: u64,
-        fee_destination: Pubkey,
     ) -> Result<()> {
         require!(amount > 0, VinError::ZeroAmount);
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
-        // Deal yang dibekukan tidak boleh dilepas sebelum arbitrase memutuskan.
+        // Deal yang dibekukan atau sudah ditutup tidak boleh dilepas.
         require!(!ctx.accounts.deal.frozen, VinError::DealFrozen);
         require!(!ctx.accounts.deal.cancelled, VinError::DealCancelled);
+        require!(!ctx.accounts.deal.completed, VinError::DealCompleted);
 
         let deal = &mut ctx.accounts.deal;
         let (vault, destination, released_field, total) = match leg {
@@ -300,8 +309,8 @@ pub mod vin_anchor {
             already.checked_add(amount).ok_or(VinError::MathOverflow)? <= total,
             VinError::OverRelease
         );
-        require!(fee_destination == ctx.accounts.fee_destination.key(), VinError::InvalidFeeDestination);
-        // Fee tidak boleh melebihi batas bps yang dikonfigurasi.
+        // Fee tidak boleh melebihi batas bps yang dikonfigurasi, dan tujuannya
+        // dikunci oleh constraint akun ke config.fee_treasury.
         let bps = match leg {
             LEG_VEHICLE => ctx.accounts.config.fee_bps_vehicle,
             _ => ctx.accounts.config.fee_bps_inspection,
@@ -366,11 +375,18 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Pengembalian dana ke pembeli (sebelum serah terima atau setelah putusan).
+    /// Pengembalian dana ke pembeli (pembatalan sebelum serah terima).
+    ///
+    /// PENTING: deal yang DIBEKUKAN tidak boleh di-refund lewat instruksi ini.
+    /// Tanpa penjagaan ini, relayer bisa melewati arbitrase dengan mengembalikan
+    /// dana sebelum arbiter memutuskan — pembekuan sengketa jadi tidak ada artinya.
+    /// Pengembalian pasca-sengketa hanya lewat `resolve_dispute`.
     pub fn refund_leg(ctx: Context<RefundLeg>, leg: u8, evidence_hash: [u8; 32]) -> Result<()> {
         let deal = &mut ctx.accounts.deal;
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
+        require!(!deal.frozen, VinError::DealFrozen);
         require!(!deal.completed, VinError::DealCompleted);
+        require!(!deal.cancelled, VinError::DealCancelled);
 
         let (vault, amount) = match leg {
             LEG_VEHICLE => (
@@ -415,6 +431,13 @@ pub mod vin_anchor {
     }
 
     /// Putusan arbitrase untuk deal yang dibekukan.
+    ///
+    /// Akuntansi WAJIB tepat habis, supaya tidak ada dana tersangkut di vault:
+    ///   - leg kendaraan: `to_buyer + to_seller == sisa leg kendaraan`
+    ///   - leg inspeksi:  `to_inspector <= sisa leg inspeksi`, sisanya kembali ke pembeli
+    ///
+    /// Jadi bengkel yang sudah mengerjakan inspeksi tetap bisa dibayar walau deal
+    /// dibatalkan, dan tidak ada saldo yang menganggur tanpa pemilik.
     pub fn resolve_dispute(
         ctx: Context<ResolveDispute>,
         decision: u8,
@@ -424,6 +447,8 @@ pub mod vin_anchor {
         evidence_hash: [u8; 32],
     ) -> Result<()> {
         require!(ctx.accounts.arbiter.key() == ctx.accounts.config.arbiter, VinError::Unauthorized);
+        require!(decision <= DECISION_BOND_SLASHED, VinError::InvalidDecision);
+
         let deal = &mut ctx.accounts.deal;
         require!(deal.frozen, VinError::DealNotFrozen);
 
@@ -431,64 +456,103 @@ pub mod vin_anchor {
         let buyer_key = deal.buyer;
         let deal_bump = deal.bump;
         let signer_seeds: &[&[&[u8]]] = &[&[b"deal", vin_hash.as_ref(), buyer_key.as_ref(), &[deal_bump]]];
-        let vehicle_remaining = deal.vehicle_amount.checked_sub(deal.vehicle_released_amount).ok_or(VinError::MathOverflow)?;
-        let inspection_remaining = deal.inspection_amount.checked_sub(deal.inspection_released_amount).ok_or(VinError::MathOverflow)?;
 
-        let (buyer_from_vehicle, seller_from_vehicle, inspector_from_inspection) = match decision {
-            DECISION_REFUND_BUYER => (vehicle_remaining, 0, 0),
-            DECISION_RELEASE_SELLER => (0, vehicle_remaining, inspection_remaining),
-            DECISION_SPLIT => (to_buyer, to_seller, to_inspector),
-            DECISION_BOND_SLASHED => (vehicle_remaining, 0, 0),
+        let vehicle_remaining = deal
+            .vehicle_amount
+            .checked_sub(deal.vehicle_released_amount)
+            .ok_or(VinError::MathOverflow)?;
+        let inspection_remaining = deal
+            .inspection_amount
+            .checked_sub(deal.inspection_released_amount)
+            .ok_or(VinError::MathOverflow)?;
+
+        // Keputusan menentukan POLA pembagian; jumlahnya tetap harus tepat habis.
+        match decision {
+            DECISION_REFUND_BUYER | DECISION_BOND_SLASHED => {
+                require!(to_buyer == vehicle_remaining, VinError::InexactSettlement);
+                require!(to_seller == 0, VinError::InexactSettlement);
+            }
+            DECISION_RELEASE_SELLER => {
+                require!(to_seller == vehicle_remaining, VinError::InexactSettlement);
+                require!(to_buyer == 0, VinError::InexactSettlement);
+            }
+            DECISION_SPLIT => {
+                require!(
+                    to_buyer.checked_add(to_seller).ok_or(VinError::MathOverflow)? == vehicle_remaining,
+                    VinError::InexactSettlement
+                );
+            }
             _ => return err!(VinError::InvalidDecision),
-        };
-        require!(
-            buyer_from_vehicle.checked_add(seller_from_vehicle).ok_or(VinError::MathOverflow)? <= vehicle_remaining,
-            VinError::OverRelease
-        );
-        require!(inspector_from_inspection <= inspection_remaining, VinError::OverRelease);
+        }
+        require!(to_inspector <= inspection_remaining, VinError::OverRelease);
+        let inspection_refund_to_buyer = inspection_remaining
+            .checked_sub(to_inspector)
+            .ok_or(VinError::MathOverflow)?;
 
-        if buyer_from_vehicle > 0 {
+        if to_buyer > 0 {
             transfer_from_deal(
                 &ctx.accounts.token_program,
                 &ctx.accounts.vehicle_vault.to_account_info(),
                 &ctx.accounts.buyer_token.to_account_info(),
                 &deal.to_account_info(),
                 signer_seeds,
-                buyer_from_vehicle,
+                to_buyer,
             )?;
             deal.vehicle_released_amount = deal
                 .vehicle_released_amount
-                .checked_add(buyer_from_vehicle)
+                .checked_add(to_buyer)
                 .ok_or(VinError::MathOverflow)?;
         }
-        if seller_from_vehicle > 0 {
+        if to_seller > 0 {
             transfer_from_deal(
                 &ctx.accounts.token_program,
                 &ctx.accounts.vehicle_vault.to_account_info(),
                 &ctx.accounts.seller_token.to_account_info(),
                 &deal.to_account_info(),
                 signer_seeds,
-                seller_from_vehicle,
+                to_seller,
             )?;
             deal.vehicle_released_amount = deal
                 .vehicle_released_amount
-                .checked_add(seller_from_vehicle)
+                .checked_add(to_seller)
                 .ok_or(VinError::MathOverflow)?;
         }
-        if inspector_from_inspection > 0 {
+        if to_inspector > 0 {
             transfer_from_deal(
                 &ctx.accounts.token_program,
                 &ctx.accounts.inspection_vault.to_account_info(),
                 &ctx.accounts.inspector_token.to_account_info(),
                 &deal.to_account_info(),
                 signer_seeds,
-                inspector_from_inspection,
+                to_inspector,
             )?;
-            deal.inspection_released_amount = deal
-                .inspection_released_amount
-                .checked_add(inspector_from_inspection)
-                .ok_or(VinError::MathOverflow)?;
         }
+        if inspection_refund_to_buyer > 0 {
+            transfer_from_deal(
+                &ctx.accounts.token_program,
+                &ctx.accounts.inspection_vault.to_account_info(),
+                &ctx.accounts.buyer_token.to_account_info(),
+                &deal.to_account_info(),
+                signer_seeds,
+                inspection_refund_to_buyer,
+            )?;
+        }
+        deal.inspection_released_amount = deal
+            .inspection_released_amount
+            .checked_add(to_inspector)
+            .ok_or(VinError::MathOverflow)?
+            .checked_add(inspection_refund_to_buyer)
+            .ok_or(VinError::MathOverflow)?;
+
+        // Setelah putusan, saldo kedua leg harus habis sampai nol.
+        require!(
+            deal.vehicle_released_amount == deal.vehicle_amount,
+            VinError::InexactSettlement
+        );
+        require!(
+            deal.inspection_released_amount == deal.inspection_amount,
+            VinError::InexactSettlement
+        );
 
         deal.frozen = false;
         match decision {
@@ -502,6 +566,7 @@ pub mod vin_anchor {
             to_buyer,
             to_seller,
             to_inspector,
+            inspection_refund_to_buyer,
             evidence_hash,
         });
         Ok(())
@@ -582,6 +647,9 @@ pub struct Config {
     pub admin: Pubkey,
     pub arbiter: Pubkey,
     pub relayer: Pubkey,
+    /// Pemilik token account penerima fee. Fee platform TIDAK PERNAH bisa
+    /// diarahkan ke dompet arbiter atau relayer.
+    pub fee_treasury: Pubkey,
     pub dispute_fund: Pubkey,
     pub fee_bps_vehicle: u16,
     pub fee_bps_inspection: u16,
@@ -590,7 +658,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub const LEN: usize = 8 + 32 * 4 + 2 + 2 + 1 + 1;
+    pub const LEN: usize = 8 + 32 * 5 + 2 + 2 + 1 + 1;
 }
 
 #[account]
@@ -824,11 +892,16 @@ pub struct ReleaseLeg<'info> {
     pub inspection_vault: Account<'info, TokenAccount>,
     #[account(mut, token::mint = vehicle_vault.mint)]
     pub seller_token: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = vehicle_vault.mint)]
+    #[account(mut, token::mint = inspection_vault.mint)]
     pub inspector_token: Account<'info, TokenAccount>,
-    /// CHECK: alamat penerima fee platform (treasury).
-    #[account(mut)]
-    pub fee_destination: UncheckedAccount<'info>,
+    /// Penerima fee platform. Constraint mint + authority memastikan relayer
+    /// tidak bisa mengalihkan fee ke dompet lain.
+    #[account(
+        mut,
+        token::mint = vehicle_vault.mint,
+        token::authority = config.fee_treasury
+    )]
+    pub fee_destination: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -865,7 +938,7 @@ pub struct ResolveDispute<'info> {
     pub buyer_token: Account<'info, TokenAccount>,
     #[account(mut, token::mint = vehicle_vault.mint)]
     pub seller_token: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = vehicle_vault.mint)]
+    #[account(mut, token::mint = inspection_vault.mint)]
     pub inspector_token: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
@@ -894,8 +967,10 @@ pub struct RecordNote<'info> {
     pub config: Account<'info, Config>,
     #[account(seeds = [b"deal", deal.vin_hash.as_ref(), deal.buyer.as_ref()], bump = deal.bump)]
     pub deal: Account<'info, DealAccount>,
+    // `init` (bukan init_if_needed): satu nomor nota hanya bisa dicatat SEKALI.
+    // Nota adalah jejak klaim - tidak boleh bisa ditimpa.
     #[account(
-        init_if_needed,
+        init,
         payer = relayer,
         space = NoteAccount::LEN,
         seeds = [b"note", deal.key().as_ref(), &note_seq.to_le_bytes()],
@@ -1010,6 +1085,8 @@ pub struct DisputeResolved {
     pub to_buyer: u64,
     pub to_seller: u64,
     pub to_inspector: u64,
+    /// Sisa leg inspeksi yang dikembalikan ke pembeli (mis. bengkel belum bekerja).
+    pub inspection_refund_to_buyer: u64,
     pub evidence_hash: [u8; 32],
 }
 
@@ -1062,4 +1139,6 @@ pub enum VinError {
     OverRelease,
     #[msg("Alamat penerima fee tidak sesuai")]
     InvalidFeeDestination,
+    #[msg("Pembagian dana tidak tepat habis: sisa dana akan tersangkut di vault")]
+    InexactSettlement,
 }

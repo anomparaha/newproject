@@ -158,6 +158,29 @@ async function runChecks(base: string): Promise<void> {
     }
   }
 
+  // Invarian yang sama dengan model ledger & program Anchor:
+  // deal yang sudah selesai/dibatalkan TIDAK BOLEH punya escrow yang masih
+  // menggantung (funded/frozen) - itu tanda dana tersangkut.
+  const deals = await fetch(`${base}/api/deals`).then((r) => r.json() as Promise<Record<string, any>>);
+  const settled = (deals.deals ?? []).filter((d: { state: string }) => d.state === 'completed' || d.state === 'cancelled');
+  check('ada deal yang sudah ditutup untuk diperiksa', settled.length > 0);
+
+  let stranded: string[] = [];
+  let inspectionPaidInDispute = false;
+  for (const deal of settled) {
+    const escrows = await fetch(`${base}/api/deals/${deal.id}/escrows`).then((r) => r.json() as Promise<Record<string, any>>);
+    for (const escrow of escrows.escrows ?? []) {
+      if (escrow.status === 'funded' || escrow.status === 'frozen' || escrow.status === 'pending') {
+        stranded.push(`${deal.id}:${escrow.leg}=${escrow.status}`);
+      }
+      if (deal.state === 'cancelled' && escrow.leg === 'inspection' && escrow.status === 'released') {
+        inspectionPaidInDispute = true;
+      }
+    }
+  }
+  check('tidak ada dana tersangkut di deal yang sudah ditutup', stranded.length === 0, stranded.join(', '));
+  check('bengkel tetap dibayar saat sengketa diputus (laporan sudah ada)', inspectionPaidInDispute);
+
   const notes = await fetch(`${base}/api/notes`).then((r) => r.json() as Promise<Record<string, any>>);
   check('ada nota untuk deal selesai', Array.isArray(notes.notes) && notes.notes.length > 0);
   if (notes.notes?.length > 0) {

@@ -13,7 +13,14 @@
  *           lintas negara + penyedia fiat berizin untuk on/off-ramp lokal.
  */
 
-import type { Escrow, EscrowLeg, EscrowProviderKind, EscrowStatus, ReleaseTerms } from './types.js';
+import type {
+  DisputeOutcome,
+  Escrow,
+  EscrowLeg,
+  EscrowProviderKind,
+  EscrowStatus,
+  ReleaseTerms,
+} from './types.js';
 
 export interface FundResult {
   escrowId: string;
@@ -51,6 +58,27 @@ export interface EscrowProvider {
     parts: { toBuyer: string; toSeller: string },
     evidenceEventIds: string[],
   ): Promise<ReleaseResult & { toBuyer: string; toSeller: string }>;
+
+  /**
+   * Pemindahan dana BERDASARKAN PUTUSAN ARBITRASE.
+   *
+   * Ini satu-satunya jalur yang boleh memindahkan dana dari escrow yang sudah
+   * dibekukan - dan hanya setelah arbiter memutuskan. Pada program Anchor,
+   * padanannya adalah `resolve_dispute` yang mentransfer dari vault beku.
+   *
+   * `toCounterparty` adalah penjual (leg kendaraan) atau bengkel (leg inspeksi).
+   * Sisa yang tidak dibayarkan ke counterparty otomatis kembali ke pembeli,
+   * sehingga tidak ada dana tersangkut.
+   */
+  resolveByArbitration(
+    escrowId: string,
+    input: {
+      decision: DisputeOutcome;
+      toBuyer: string;
+      toCounterparty: string;
+      evidenceEventIds: string[];
+    },
+  ): Promise<ReleaseResult & { toBuyer: string; toCounterparty: string }>;
 }
 
 export function sameCurrency(a: string, b: string): boolean {

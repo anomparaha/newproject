@@ -10,6 +10,7 @@
 
 import type { DatabaseSync } from 'node:sqlite';
 import type {
+  DisputeOutcome,
   Escrow,
   EscrowLeg,
   EscrowProvider,
@@ -201,6 +202,63 @@ export class MockEscrowProvider implements EscrowProvider {
     return { escrowId, status: 'partially_released', txRef, releasedAt, ...parts };
   }
 
+  /**
+   * Pindahkan dana dari escrow yang (mungkin) sedang DIBEKUKAN, atas dasar
+   * putusan arbitrase. Meniru `resolve_dispute` pada program Anchor.
+   */
+  async resolveByArbitration(
+    escrowId: string,
+    input: { decision: DisputeOutcome; toBuyer: string; toCounterparty: string; evidenceEventIds: string[] },
+  ): Promise<{ escrowId: string; status: EscrowStatus; txRef: string; releasedAt: string; toBuyer: string; toCounterparty: string }> {
+    const escrow = this.findById(escrowId);
+    if (!escrow) throw new Error(`Escrow ${escrowId} tidak ditemukan`);
+    if (escrow.status === 'released' || escrow.status === 'refunded' || escrow.status === 'partially_released') {
+      throw new Error('Escrow sudah diselesaikan; putusan arbitrase tidak bisa dijalankan dua kali.');
+    }
+    if (input.evidenceEventIds.length === 0) {
+      throw new Error('Putusan arbitrase wajib merujuk bukti event.');
+    }
+    const toBuyer = Number(input.toBuyer);
+    const toCounterparty = Number(input.toCounterparty);
+    const amount = Number(escrow.amount);
+    if (toBuyer + toCounterparty > amount) {
+      throw new Error('Putusan melebihi jumlah yang ada di escrow (dana tidak boleh diciptakan).');
+    }
+    const status: EscrowStatus =
+      toBuyer > 0 && toCounterparty > 0 ? 'partially_released' : toCounterparty > 0 ? 'released' : 'refunded';
+    const txRef = `mock_tx_arbitration_${newId('x')}`;
+    const releasedAt = nowIso();
+    run(this.db, 'UPDATE escrows SET status = ?, released_at = ?, tx_ref = ? WHERE id = ?', [
+      status,
+      releasedAt,
+      txRef,
+      escrowId,
+    ]);
+    run(
+      this.db,
+      'INSERT INTO audit_log (id, action, actor_id, entity, entity_id, detail, created_at) VALUES (?,?,?,?,?,?,?)',
+      [
+        newId('aud'),
+        'escrow_arbitration_settlement',
+        null,
+        'escrow',
+        escrowId,
+        JSON.stringify({
+          decision: input.decision,
+          toBuyer: input.toBuyer,
+          toCounterparty: input.toCounterparty,
+          leg: escrow.leg,
+          note:
+            escrow.leg === 'inspection'
+              ? 'Bengkel dibayar bila laporan sudah diunggah; sisanya kembali ke pembeli.'
+              : 'Leg kendaraan mengikuti putusan arbiter.',
+        }),
+        releasedAt,
+      ],
+    );
+    return { escrowId, status, txRef, releasedAt, toBuyer: input.toBuyer, toCounterparty: input.toCounterparty };
+  }
+
   findById(id: string): Escrow | null {
     const row = get(this.db, 'SELECT * FROM escrows WHERE id = ?', [id]) as EscrowRow | undefined;
     return row ? rowToEscrow(row) : null;
@@ -255,6 +313,9 @@ export class AnchorEscrowProvider implements EscrowProvider {
     this.notReady();
   }
   async partialRelease(): Promise<never> {
+    this.notReady();
+  }
+  async resolveByArbitration(): Promise<never> {
     this.notReady();
   }
 }
