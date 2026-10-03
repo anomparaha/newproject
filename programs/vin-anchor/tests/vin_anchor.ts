@@ -81,6 +81,25 @@ describe('vin-anchor', () => {
   let feeToken: PublicKey;
 
   before(async () => {
+    // TEMPORARY DIAGNOSTIC. The client fills accounts in from the IDL, and two
+    // failures say it filled in the wrong thing: `buyer_actor` failed the seeds
+    // check, and `resolveDispute` claimed `arbiter` was not provided although it
+    // is passed by name. Both are questions about the IDL, so the IDL is printed
+    // here - account names and the PDA recipes the client derives from them -
+    // next to the PDA the test expects. Remove this block once the accounts
+    // resolve.
+    const idlInstructions = (idl as unknown as {
+      instructions: Array<{ name: string; accounts: Array<{ name: string; pda?: unknown }> }>;
+    }).instructions;
+    for (const name of ['openDeal', 'resolveDispute', 'fundLeg', 'releaseLeg']) {
+      const ix = idlInstructions.find((i) => i.name === name);
+      console.log(`IDL ${name}: ${ix ? ix.accounts.map((a) => a.pda ? `${a.name}=${JSON.stringify(a.pda)}` : a.name).join(' | ') : 'NOT IN THE IDL'}`);
+    }
+    console.log('actor PDAs the test expects:');
+    for (const [label, wallet] of [['buyer', buyer.publicKey], ['seller', seller.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
+      console.log(`  ${label} -> ${actorPda(wallet).toBase58()}`);
+    }
+
     for (const who of [admin, arbiter, relayer, seller, inspector, buyer]) {
       const sig = await provider.connection.requestAirdrop(who.publicKey, 2 * LAMPORTS_PER_SOL);
       await provider.connection.confirmTransaction(sig);
@@ -130,6 +149,11 @@ describe('vin-anchor', () => {
           inspectionVault: vaultPda(deal, LEG_INSPECTION),
           usdcMint,
         })
+        // `buyer` is a signer on the instruction, so the transaction has to be
+        // signed by it. Without the signature the call never reaches the
+        // program and the check that `open_deal` is what rejects an unbonded
+        // workshop never runs.
+        .signers([buyer])
         .rpc(),
       /BondRequired|Bond/,
     );
