@@ -938,6 +938,16 @@ fn dbg_void(tag: u64, bytes: &[u8]) -> &'static [u8] {
     &[]
 }
 
+/// TEMPORARY DIAGNOSTIC. Logs a key in its base58 form, the same form the
+/// error printer uses for the Left/Right lines, so a log line can be compared
+/// with those lines one to one. Returns an empty slice, so it contributes no
+/// seed. Remove with `dbg_log_key` and `debug_seeds`.
+#[inline(never)]
+fn dbg_str(tag: u64, key: &Pubkey) -> &'static [u8] {
+    anchor_lang::solana_program::msg!("dbg {:#x}: {}", tag, key);
+    &[]
+}
+
 /// TEMPORARY DIAGNOSTIC. Runs the program's own `find_program_address` on the
 /// seeds it is given, logs the derived address, and returns an empty slice so
 /// it contributes no seed. Placed in the `deal` seed list it answers, from
@@ -991,8 +1001,8 @@ pub struct OpenDeal<'info> {
             dbg_seed(0xe0, b"deal"),
             dbg_seed(0xe8, vin_hash.as_ref()),
             dbg_seed(0xf0, buyer.key().as_ref()),
-            dbg_void(0x100, deal.key().as_ref()),
-            dbg_void(0x108, __program_id.as_ref()),
+            dbg_str(0x100, &deal.key()),
+            dbg_str(0x108, &__program_id),
             dbg_find(0x110, &[b"deal", vin_hash.as_ref(), buyer.key().as_ref()], __program_id),
         ],
         bump
@@ -1004,7 +1014,7 @@ pub struct OpenDeal<'info> {
         payer = buyer,
         token::mint = usdc_mint,
         token::authority = deal,
-        seeds = [b"vault", deal.key().as_ref(), &[LEG_VEHICLE]],
+        seeds = [b"vault", deal.key().as_ref(), &[LEG_VEHICLE], dbg_str(0x140, &deal.key()), dbg_str(0x150, &__pda_address)],
         bump
     )]
     pub vehicle_vault: Account<'info, TokenAccount>,
@@ -1014,7 +1024,7 @@ pub struct OpenDeal<'info> {
         payer = buyer,
         token::mint = usdc_mint,
         token::authority = deal,
-        seeds = [b"vault", deal.key().as_ref(), &[LEG_INSPECTION]],
+        seeds = [b"vault", deal.key().as_ref(), &[LEG_INSPECTION], dbg_str(0x158, &__pda_address)],
         bump
     )]
     pub inspection_vault: Account<'info, TokenAccount>,
