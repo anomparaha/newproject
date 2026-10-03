@@ -161,21 +161,47 @@ jobs:
           done
           exit 0
 
+      - name: List the build errors
+        if: failure()
+        run: |
+          log=/tmp/anchor-build.log
+          [ -s "$log" ] || exit 0
+          # The headers alone always fit, and they say how many errors there
+          # are and which class they belong to, even when the blocks below hit
+          # the ten-annotation ceiling.
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -E '^error(\[[A-Z0-9]+\])?:' | head -10 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+          echo "total errors: $(sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -cE '^error(\[[A-Z0-9]+\])?:')"
+          exit 0
+
       - name: Report the errors in the build log
         if: failure()
         run: |
           log=/tmp/anchor-build.log
           [ -s "$log" ] || exit 0
-          # One annotation per error, with the newlines escaped, because a
-          # rustc error is a block of code and context and ten lines per step
-          # is not enough to hold even two of them.
-          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | awk -v RS='' '
-            /[Ee]rror/ {
+          # One annotation per error, newlines escaped, because a rustc error is
+          # a block of code and context. Only blocks that start with "error" -
+          # the trailing summary is not an error and it was stealing slots.
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | awk -v RS='' '/^error/ {
               b = substr($0, 1, 4000);
               gsub(/%/, "%25", b);
               gsub(/\n/, "%0A", b);
               print "::error::" b;
             }' | head -10
+          exit 0
+
+      - name: Report the rest of the build errors
+        if: failure()
+        run: |
+          log=/tmp/anchor-build.log
+          [ -s "$log" ] || exit 0
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | awk -v RS='' '/^error/ {
+              b = substr($0, 1, 4000);
+              gsub(/%/, "%25", b);
+              gsub(/\n/, "%0A", b);
+              print "::error::" b;
+            }' | tail -n +11 | head -10
           exit 0
 
       - name: Report the end of the build log
@@ -298,8 +324,6 @@ jobs:
           # A rolling key: the toolchain cache has to survive failing runs, and
           # an immutable key would freeze it at whatever the first run saved.
           key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}-${{ github.run_id }}
-          restore-keys: |
-            anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}
 
       - name: Save the IDL as an artifact
         if: success()

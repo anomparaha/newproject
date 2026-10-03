@@ -145,20 +145,28 @@ pub mod vin_anchor {
     /// auditable off-chain event log).
     pub fn return_bond(ctx: Context<SettleBond>, amount: u64, reason_hash: [u8; 32]) -> Result<()> {
         require!(amount > 0, VinError::ZeroAmount);
-        let actor = &mut ctx.accounts.actor;
-        require!(actor.bond_locked >= amount, VinError::InsufficientBond);
+        require!(ctx.accounts.actor.bond_locked >= amount, VinError::InsufficientBond);
+
+        // Read what the CPI needs before taking the mutable borrow: the vault
+        // authority and the signer seeds come from the actor account, and the
+        // borrow checker will not let both borrows exist at once.
+        let actor_authority = ctx.accounts.actor.to_account_info();
+        let (wallet, bump) = (ctx.accounts.actor.wallet, ctx.accounts.actor.bump);
+
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.bond_vault.to_account_info(),
                     to: ctx.accounts.actor_token.to_account_info(),
-                    authority: ctx.accounts.actor.to_account_info(),
+                    authority: actor_authority,
                 },
-                &[&[b"actor", actor.wallet.as_ref(), &[actor.bump]]],
+                &[&[b"actor", wallet.as_ref(), &[bump]]],
             ),
             amount,
         )?;
+
+        let actor = &mut ctx.accounts.actor;
         actor.bond_locked = actor.bond_locked.checked_sub(amount).ok_or(VinError::MathOverflow)?;
         emit!(BondReturned { actor: actor.key(), amount, reason_hash });
         Ok(())
