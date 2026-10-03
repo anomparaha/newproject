@@ -181,6 +181,10 @@ This repository has history and one shared branch (`arena/01a0fdf4-newproject`).
 - **Never re-run `git init`** or push a freshly initialised repo over this branch. That replaces the
   whole history with a single root commit and every earlier commit becomes unreachable.
 - **Pull before you push.** If a push is rejected, pull and resolve - do not force-push.
+- **A shallow clone is not lost history.** `git clone --depth` (and some sandboxes) mark the oldest
+  fetched commit as a grafted root, so `git log` simply stops there and the commit looks parentless.
+  Run `git fetch --unshallow` (or `git cat-file -p <sha>` to read the raw commit) before concluding
+  that history was replaced.
 - Generated data (`.data/`, `node_modules/`, `.next/`) is gitignored; reset it with `npm run seed:reset`
   instead of committing it.
 
