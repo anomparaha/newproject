@@ -115,19 +115,25 @@ describe('vin-anchor', () => {
     // token account owner, so a bond cannot be paid from the buyer balance).
     await mintTo(provider.connection, buyer, usdcMint, inspectorToken, buyer, 1_000_000_000n);
 
-    const initSig = await program.methods
+    // TEMPORARY DIAGNOSTIC. The program prints a marker when it initializes the
+    // config, so the logs of this call name the build the validator is running.
+    // An earlier run read them back with `getTransaction` and got nothing, so
+    // they are taken from a simulation of the same instruction instead: a
+    // simulation needs no landed transaction. Remove it with the rest.
+    const initTx = await program.methods
+      .initializeConfig(arbiter.publicKey, relayer.publicKey, feeTreasury.publicKey, 100, 500)
+      .accounts({ admin: admin.publicKey, usdcMint, disputeFund })
+      .transaction();
+    initTx.feePayer = admin.publicKey;
+    initTx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    const initSim = await provider.connection.simulateTransaction(initTx);
+    const initLogs = initSim.value.logs || [];
+    console.log(`initializeConfig simulate logs (${initLogs.length}):`);
+    initLogs.forEach((line) => console.log(`  | ${line}`));
+    await program.methods
       .initializeConfig(arbiter.publicKey, relayer.publicKey, feeTreasury.publicKey, 100, 500)
       .accounts({ admin: admin.publicKey, usdcMint, disputeFund })
       .rpc();
-    // TEMPORARY DIAGNOSTIC. The logs of a successful call carry whatever the
-    // program prints, so a marker compiled into the program proves which build
-    // the validator is running. Remove it with the rest of the diagnostic.
-    const initTx = await provider.connection.getTransaction(initSig, {
-      commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0,
-    });
-    const initLogs = initTx && initTx.meta && initTx.meta.logMessages ? initTx.meta.logMessages : [];
-    console.log(`initializeConfig logs: ${initLogs.join(' || ')}`);
 
     for (const [wallet, role] of [
       [buyer.publicKey, ROLE_BUYER],
@@ -157,11 +163,22 @@ describe('vin-anchor', () => {
     console.log(`wallets: admin ${admin.publicKey.toBase58()} | buyer ${buyer.publicKey.toBase58()} | seller ${seller.publicKey.toBase58()} | inspector ${inspector.publicKey.toBase58()}`);
     console.log(`arbiter ${arbiter.publicKey.toBase58()} | relayer ${relayer.publicKey.toBase58()} | feeTreasury ${feeTreasury.publicKey.toBase58()}`);
     console.log(`mint ${usdcMint.toBase58()} | tokens: buyer ${buyerToken.toBase58()} seller ${sellerToken.toBase58()} inspector ${inspectorToken.toBase58()} fee ${feeToken.toBase58()} | disputeFund ${disputeFund.toBase58()} | config ${configPda.toBase58()}`);
-    const openDealIdl = idlRaw.instructions.find((i) => i.name === 'openDeal');
+    const openDealIdl = idlRaw.instructions.find((i) => i.name === 'openDeal' || i.name === 'open_deal');
     const openDealAccounts = openDealIdl ? openDealIdl.accounts : [];
     console.log(`IDL openDeal accounts (${openDealAccounts.length}):`);
     openDealAccounts.forEach((a, i) => {
       console.log(`  [${i}] ${a.name}${a.pda ? ' pda=' + JSON.stringify(a.pda) : ''}${a.address ? ' address=' + a.address : ''}`);
+    });
+    // The camelCased IDL the client actually resolves against. Its account list
+    // is the order the client puts on the wire, and its `pda` entries are the
+    // seed definitions the compiler read out of the program source.
+    const camelIdl = (program as unknown as {
+      idl: { instructions: Array<{ name: string; accounts: Array<{ name: string; isSigner?: boolean; isWritable?: boolean; pda?: unknown }> }> };
+    }).idl;
+    const camelOpenDeal = camelIdl.instructions.find((i) => i.name === 'openDeal') || camelIdl.instructions[0];
+    console.log(`client IDL openDeal accounts (${camelOpenDeal ? camelOpenDeal.accounts.length : 0}):`);
+    (camelOpenDeal ? camelOpenDeal.accounts : []).forEach((a, i) => {
+      console.log(`  [${i}] ${a.name} signer=${Boolean(a.isSigner)} writable=${Boolean(a.isWritable)}${a.pda ? ' pda=' + JSON.stringify(a.pda) : ''}`);
     });
     for (const [label, wallet] of [['buyer', buyer.publicKey], ['seller', seller.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
       const addr = actorPda(wallet);
@@ -195,6 +212,7 @@ describe('vin-anchor', () => {
     // The deal address test 1 uses, computed here so the instruction can be
     // built before the test that assigns the shared `deal` variable runs.
     const probeDeal = dealPda(buyer.publicKey);
+    console.log(`probeDeal (dealPda of the buyer) ${probeDeal.toBase58()}`);
     const openDealAccountsStrict = (buyerKey: PublicKey) => ({
       buyer: buyerKey,
       buyerActor: actorPda(buyer.publicKey),
@@ -250,6 +268,90 @@ describe('vin-anchor', () => {
       console.log('probe (buyer_actor = seller actor): the call unexpectedly succeeded');
     } catch (e) {
       dumpError('probe (buyer_actor = seller actor)', e);
+    }
+    // TEMPORARY DIAGNOSTIC. `Right` in a ConstraintSeeds error is the address
+    // the program derived for the seeds it holds. A wallet the test knows is put
+    // in the `buyer` slot below, so that address can be explained here instead of
+    // guessed at: every bump is tried for `[b"actor", wallet]` and the ones that
+    // reproduce it are printed. A match means the deployed program does read the
+    // slot and does use the stored bump, and names the bump it used. Remove this
+    // with the rest of the diagnostic block.
+    const seedsAddresses = (e: unknown): { left?: string; right?: string } => {
+      const logs = ((e as { logs?: string[] }).logs || []).map((line) => line.replace(/^Program log: /, '').trim());
+      const out: { left?: string; right?: string } = {};
+      logs.forEach((line, i) => {
+        if (line === 'Left:') out.left = (logs[i + 1] || '').trim();
+        if (line === 'Right:') out.right = (logs[i + 1] || '').trim();
+      });
+      return out;
+    };
+    const explainActorSeeds = (label: string, wallet: PublicKey, right?: string) => {
+      const canonical = PublicKey.findProgramAddressSync([Buffer.from('actor'), wallet.toBuffer()], program.programId);
+      const bumps: number[] = [];
+      for (let bump = 0; bump <= 255; bump += 1) {
+        try {
+          const candidate = PublicKey.createProgramAddressSync(
+            [Buffer.from('actor'), wallet.toBuffer(), Buffer.from([bump])],
+            program.programId,
+          ).toBase58();
+          if (candidate === right) bumps.push(bump);
+        } catch (e) {
+          // The address is on the curve: not a valid bump for these seeds.
+        }
+      }
+      console.log(
+        `${label}: [b"actor", ${wallet.toBase58()}] canonical ${canonical[0].toBase58()} bump ${canonical[1]} | Right ${right || '(not printed)'} reproduced by bumps ${bumps.length ? bumps.join(', ') : 'NONE'}`,
+      );
+    };
+    for (const [label, altBuyer] of [
+      ['probe (buyer slot = seller)', seller],
+      ['probe (buyer slot = inspector)', inspector],
+    ] as Array<[string, Keypair]>) {
+      const altDeal = dealPda(altBuyer.publicKey);
+      try {
+        await program.methods
+          .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
+          .accountsStrict({
+            ...openDealAccountsStrict(altBuyer.publicKey),
+            deal: altDeal,
+            vehicleVault: vaultPda(altDeal, LEG_VEHICLE),
+            inspectionVault: vaultPda(altDeal, LEG_INSPECTION),
+          })
+          .signers([altBuyer])
+          .rpc();
+        console.log(`${label}: the call unexpectedly succeeded`);
+      } catch (e) {
+        dumpError(label, e);
+        const { right } = seedsAddresses(e);
+        explainActorSeeds(label, altBuyer.publicKey, right);
+        explainActorSeeds(`${label} via the buyer wallet`, buyer.publicKey, right);
+      }
+    }
+    // TEMPORARY DIAGNOSTIC. Positive control: the inspector's actor account in
+    // the `buyer_actor` slot with the inspector's wallet in the `buyer` slot, so
+    // the account and the wallet agree. If the program reads that slot and the
+    // stored bump, every actor check passes here and the call gets as far as the
+    // handler's "the workshop holds no bond" rule. If it still reports
+    // `buyer_actor`, the derivation in the deployed binary does not use the slot
+    // at all. Remove it with the rest of the diagnostic.
+    try {
+      const controlDeal = dealPda(inspector.publicKey);
+      await program.methods
+        .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
+        .accountsStrict({
+          ...openDealAccountsStrict(inspector.publicKey),
+          buyerActor: actorPda(inspector.publicKey),
+          deal: controlDeal,
+          vehicleVault: vaultPda(controlDeal, LEG_VEHICLE),
+          inspectionVault: vaultPda(controlDeal, LEG_INSPECTION),
+        })
+        .signers([inspector])
+        .rpc();
+      console.log('probe (buyer slot = inspector, buyer_actor = inspector actor): the call unexpectedly succeeded');
+    } catch (e) {
+      dumpError('probe (buyer slot = inspector, buyer_actor = inspector actor)', e);
+      const { right } = seedsAddresses(e);
+      explainActorSeeds('probe (inspector in the inspector slot)', inspector.publicKey, right);
     }
     try {
       const ix = await program.methods

@@ -69,7 +69,7 @@ pub mod vin_anchor {
         // TEMPORARY DIAGNOSTIC: a marker in the binary, so the test can tell
         // which build the validator is actually running. Remove it with the
         // diagnostic block in the tests.
-        msg!("vin-anchor build marker 2026-10-03T17:00Z");
+        msg!("vin-anchor build marker v2 2026-10-03T20:30Z");
         Ok(())
     }
 

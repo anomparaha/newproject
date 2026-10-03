@@ -187,6 +187,16 @@ jobs:
             fi
             ls -l "$f"
           done
+          # TEMPORARY DIAGNOSTIC. The test suite behaves as if the validator were
+          # running a program other than this source; the marker is a string the
+          # program prints from `initialize_config`, so counting it here says
+          # whether the deployed binary was built from this commit. The SBF
+          # artifact is listed too: `anchor build` copies it into target/deploy,
+          # and the copy's mtime hides how old the binary itself is.
+          echo "sha256 (deployed): $(sha256sum target/deploy/vin_anchor.so)"
+          ls -l --time-style=full-iso target/sbf-solana-solana/release/vin_anchor.so 2>/dev/null || echo "no SBF artifact path"
+          echo "marker occurrences: $(strings target/deploy/vin_anchor.so | grep -c 'vin-anchor build marker' || true)"
+          strings target/deploy/vin_anchor.so | grep 'vin-anchor build marker' || echo "no marker string in the binary"
 
       # GitHub keeps ten annotations per step and silently drops the rest, and
       # the useful lines of a failed build sit in different places: the command
