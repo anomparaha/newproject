@@ -132,6 +132,7 @@ describe('vin-anchor', () => {
         bonder: inspector.publicKey,
         actor: actorPda(inspector.publicKey),
         // owned by the workshop: SPL Token checks the owner
+        bonderToken: inspectorToken,
         bondVault: bondVaultPda(actorPda(inspector.publicKey)),
         tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
       })
