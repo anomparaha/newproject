@@ -20,6 +20,12 @@ url = "https://api.apr.dev"
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
+[test]
+# Milliseconds Anchor waits for the validator's RPC to answer before giving up.
+# The default is 5000, which a cold runner does not reliably meet: before it
+# answers, the validator builds a genesis ledger and loads this program.
+startup_wait = 60000
+
 [scripts]
 # Anchor runs this from the workspace root. That is where Anchor.toml and
 # target/idl live, so staying there is what lets the tests find both; the tests

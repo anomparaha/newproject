@@ -273,7 +273,7 @@ jobs:
           echo "--- build log: $(wc -l < "$log") lines ---"
           for s in AdminOnly InitializeConfig RegisterActor LockBond SettleBond \
                    OpenDeal FundLeg FreezeDeal ReleaseLeg RefundLeg ResolveDispute \
-                   SlashBond RecordNote ProbeInitMint ProbeInitIfNeededMint ProbeBondVault; do
+                   SlashBond RecordNote; do
             if grep -qE "the trait bound \`$s<'_>: (anchor_lang::Accounts|Bumps)" "$log"; then
               echo "MISSING  $s"
             else
@@ -350,6 +350,20 @@ jobs:
             sed -e 's/\x1b\[[0-9;]*m//g' "$log" | tail -150
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      # The validator writes to this file and nowhere else, and Anchor's
+      # timeout message points at it. Without it, a validator that does not come
+      # up is a single line with no cause behind it.
+      - name: Show the test validator log
+        if: failure()
+        run: |
+          log=.anchor/test-ledger/test-ledger-log.txt
+          [ -s "$log" ] || exit 0
+          cp "$log" /tmp/anchor-validator.log
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*$' | tail -40 | fold -w 3900 | head -10 | while IFS= read -r chunk; do
+            echo "::error::${chunk//%/%25}"
+          done
           exit 0
 
       - name: Keep the raw logs
