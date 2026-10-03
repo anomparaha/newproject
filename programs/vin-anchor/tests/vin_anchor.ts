@@ -145,7 +145,7 @@ describe('vin-anchor', () => {
     try {
       const ix = await program.methods
         .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-        .accounts({
+        .accountsStrict({
           buyer: buyer.publicKey,
           buyerActor: actorPda(buyer.publicKey),
           sellerActor: actorPda(seller.publicKey),
@@ -156,6 +156,10 @@ describe('vin-anchor', () => {
           vehicleVault: vaultPda(deal, LEG_VEHICLE),
           inspectionVault: vaultPda(deal, LEG_INSPECTION),
           usdcMint,
+          config: configPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .instruction();
       await showMetas('openDeal (fails)', ix, 'openDeal');
@@ -183,7 +187,7 @@ describe('vin-anchor', () => {
     await assert.rejects(
       program.methods
         .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-        .accounts({
+        .accountsStrict({
           buyer: buyer.publicKey,
           // The client's account resolver derives every PDA the instruction
           // needs from the IDL. For these three it fails silently - the error is
@@ -201,6 +205,10 @@ describe('vin-anchor', () => {
           vehicleVault: vaultPda(deal, LEG_VEHICLE),
           inspectionVault: vaultPda(deal, LEG_INSPECTION),
           usdcMint,
+          config: configPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         // `buyer` is a signer on the instruction, so the transaction has to be
         // signed by it. Without the signature the call never reaches the
@@ -230,7 +238,7 @@ describe('vin-anchor', () => {
 
     await program.methods
       .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-      .accounts({
+      .accountsStrict({
         buyer: buyer.publicKey,
         seller: seller.publicKey,
         inspector: inspector.publicKey,
@@ -259,6 +267,10 @@ describe('vin-anchor', () => {
           vehicleVault: vaultPda(deal, LEG_VEHICLE),
           inspectionVault: vaultPda(deal, LEG_INSPECTION),
           buyerToken,
+          config: configPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .signers([buyer])
         .rpc(),
@@ -459,7 +471,7 @@ describe('vin-anchor', () => {
     const deal2 = dealPda(buyer2.publicKey);
     await program.methods
       .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-      .accounts({
+      .accountsStrict({
         buyer: buyer2.publicKey,
         buyerActor: actorPda(buyer2.publicKey),
         sellerActor: actorPda(seller.publicKey),
@@ -484,6 +496,10 @@ describe('vin-anchor', () => {
           vehicleVault: vaultPda(deal2, LEG_VEHICLE),
           inspectionVault: vaultPda(deal2, LEG_INSPECTION),
           buyerToken: buyer2Token,
+          config: configPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .signers([buyer2])
         .rpc();
