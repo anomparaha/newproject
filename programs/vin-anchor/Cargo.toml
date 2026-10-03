@@ -23,6 +23,14 @@ anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
 anchor-spl = "0.30.1"
 mpl-core = { version = "0.7", optional = true }
 
+# Anchor 0.30.1 generates the IDL with proc-macro2's semver-exempt API, which
+# calls Span::source_file(). proc-macro2 dropped that method in 1.0.95, and the
+# build then stops inside anchor-syn with "method not found in
+# proc_macro2::Span" - after the program itself has compiled. Pinning the last
+# release that still has it is what lets `anchor build` finish. Remove the pin
+# when the program moves to an Anchor that no longer needs the method.
+proc-macro2 = "=1.0.89"
+
 # No Rust-side unit tests: the program is exercised through the Anchor
 # TypeScript tests, which build a local validator and drive the instructions
 # the way a client does. solana-program-test and solana-sdk used to sit here
