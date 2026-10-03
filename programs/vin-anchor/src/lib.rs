@@ -893,6 +893,7 @@ fn dbg_void_u64(tag: u64, value: u64) -> &'static [u8] {
 #[derive(Accounts)]
 #[instruction(vin_hash: [u8; 32], vehicle_amount: u64, inspection_amount: u64)]
 pub struct OpenDeal<'info> {
+    #[account(mut)]
     pub buyer: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, Config>,
