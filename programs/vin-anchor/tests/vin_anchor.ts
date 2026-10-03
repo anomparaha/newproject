@@ -81,23 +81,47 @@ describe('vin-anchor', () => {
   let feeToken: PublicKey;
 
   before(async () => {
-    // TEMPORARY DIAGNOSTIC. The client fills accounts in from the IDL, and two
-    // failures say it filled in the wrong thing: `buyer_actor` failed the seeds
-    // check, and `resolveDispute` claimed `arbiter` was not provided although it
-    // is passed by name. Both are questions about the IDL, so the IDL is printed
-    // here - account names and the PDA recipes the client derives from them -
-    // next to the PDA the test expects. Remove this block once the accounts
-    // resolve.
-    const idlInstructions = (idl as unknown as {
-      instructions: Array<{ name: string; accounts: Array<{ name: string; pda?: unknown }> }>;
-    }).instructions;
-    for (const name of ['openDeal', 'resolveDispute', 'fundLeg', 'releaseLeg']) {
-      const ix = idlInstructions.find((i) => i.name === name);
-      console.log(`IDL ${name}: ${ix ? ix.accounts.map((a) => a.pda ? `${a.name}=${JSON.stringify(a.pda)}` : a.name).join(' | ') : 'NOT IN THE IDL'}`);
+    // TEMPORARY DIAGNOSTIC. `openDeal` fails the seeds check on `buyer_actor`
+    // even though the seed is that wallet's actor PDA. The client derives PDAs
+    // from the camelCased IDL and the fields of that IDL are what it reads, so
+    // both are printed here: what the IDL says the seed is, what PDAs that
+    // produces, and the account metas the client actually sends. Remove this
+    // block once the accounts resolve.
+    const clientIdl = (program as unknown as {
+      idl: {
+        instructions: Array<{
+          name: string;
+          accounts: Array<{ name: string; pda?: { seeds: Array<Record<string, string>> } }>;
+        }>;
+      };
+    }).idl;
+    for (const name of ['openDeal', 'registerActor']) {
+      const ix = clientIdl.instructions.find((i) => i.name === name);
+      console.log(`IDL ${name}: ${ix ? JSON.stringify(ix.accounts.map((a) => ({ n: a.name, seeds: a.pda?.seeds }))) : 'NOT IN THE IDL'}`);
     }
-    console.log('actor PDAs the test expects:');
     for (const [label, wallet] of [['buyer', buyer.publicKey], ['seller', seller.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
-      console.log(`  ${label} -> ${actorPda(wallet).toBase58()}`);
+      const [derived] = PublicKey.findProgramAddressSync([Buffer.from('actor'), wallet.toBuffer()], program.programId);
+      console.log(`actor PDA ${label}: from seeds ${derived.toBase58()} | test expects ${actorPda(wallet).toBase58()} | match ${derived.equals(actorPda(wallet))}`);
+    }
+    try {
+      const builtIx = await program.methods
+        .openDeal(vinHash, new anchor.BN('0'), new anchor.BN('0'))
+        .accounts({
+          buyer: buyer.publicKey,
+          seller: seller.publicKey,
+          inspector: inspector.publicKey,
+          deal,
+          vehicleVault: vaultPda(deal, LEG_VEHICLE),
+          inspectionVault: vaultPda(deal, LEG_INSPECTION),
+          usdcMint,
+        })
+        .instruction();
+      console.log('openDeal metas the client sends:');
+      for (const key of builtIx.keys) {
+        console.log(`  ${key.pubkey.toBase58()} signer=${key.isSigner} writable=${key.isWritable}`);
+      }
+    } catch (e) {
+      console.log(`openDeal instruction could not be built: ${String(e)}`);
     }
 
     for (const who of [admin, arbiter, relayer, seller, inspector, buyer]) {
@@ -330,7 +354,11 @@ describe('vin-anchor', () => {
         DECISION_BOND_SLASHED,
         new anchor.BN(VEHICLE_AMOUNT.toString()),
         new anchor.BN(0),
-        // the workshop was already paid in step 5
+        // The program takes five arguments; a call with four leaves the client
+        // treating the context object as the last argument, which fails as
+        // "Account `arbiter` not provided" rather than as a bad call.
+        // The workshop was already paid in step 5, so its share is zero.
+        new anchor.BN(0),
         hash(42),
       )
       .accounts({
@@ -374,7 +402,10 @@ describe('vin-anchor', () => {
     const sig = await provider.connection.requestAirdrop(buyer2.publicKey, 2 * LAMPORTS_PER_SOL);
     await provider.connection.confirmTransaction(sig);
     const buyer2Token = await createAccount(provider.connection, buyer2, usdcMint, buyer2.publicKey);
-    await mintTo(provider.connection, buyer2, usdcMint, buyer2Token, buyer2, 100_000_000_000n);
+    // The mint authority is `buyer` (see `createMint` in the setup), and SPL
+    // Token checks the authority signature, so minting is signed by `buyer`
+    // even though the tokens land in buyer2's account.
+    await mintTo(provider.connection, buyer, usdcMint, buyer2Token, buyer, 100_000_000_000n);
 
     // The workshop bond is locked again (it was slashed in test 9).
     await program.methods
