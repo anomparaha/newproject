@@ -159,6 +159,22 @@ jobs:
           done
           exit 0
 
+      # When the build fails, the first question is usually "where did this
+      # dependency come from". cargo tree can answer it, and the answer travels
+      # out as annotations like everything else here.
+      - name: Diagnose the dependency graph
+        if: failure()
+        continue-on-error: true
+        working-directory: programs/vin-anchor
+        run: |
+          [ -f Cargo.lock ] || exit 0
+          echo "::error::lock: $(head -1 Cargo.lock)"
+          echo "::error::packages in the lock: $(grep -c '^name = ' Cargo.lock)"
+          echo "::error::packages in the normal graph: $(cargo tree -e normal --prefix none 2>/dev/null | sort -u | grep -c .)"
+          echo "::error::block-buffer entries in the normal graph: $(cargo tree -e normal --prefix none 2>/dev/null | grep -c '^block-buffer')"
+          cargo tree -i 'block-buffer@0.12.1' 2>&1 | head -6 | while IFS= read -r line; do echo "::error::$line"; done
+          exit 0
+
       - name: Collect the build errors for a human reader
         if: failure()
         run: |
