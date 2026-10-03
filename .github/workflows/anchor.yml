@@ -67,7 +67,11 @@ jobs:
             ~/.cargo/git
             ~/.cache/solana
             target
-          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}
+          # A rolling key: the toolchain cache has to survive failing runs, and
+          # an immutable key would freeze it at whatever the first run saved.
+          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -162,9 +166,16 @@ jobs:
         run: |
           log=/tmp/anchor-build.log
           [ -s "$log" ] || exit 0
-          grep -i -E 'error|failed' -A 2 "$log" | sed -e 's/\x1b\[[0-9;]*m//g' | head -10 | while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error::${line//%/%25}"
-          done
+          # One annotation per error, with the newlines escaped, because a
+          # rustc error is a block of code and context and ten lines per step
+          # is not enough to hold even two of them.
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | awk -v RS='' '
+            /[Ee]rror/ {
+              b = substr($0, 1, 4000);
+              gsub(/%/, "%25", b);
+              gsub(/\n/, "%0A", b);
+              print "::error::" b;
+            }' | head -10
           exit 0
 
       - name: Report the end of the build log
@@ -232,9 +243,13 @@ jobs:
         run: |
           log=/tmp/anchor-test.log
           [ -s "$log" ] || exit 0
-          grep -i -E 'failing|error|assertion|^ +[0-9]+\)' -A 3 "$log" | sed -e 's/\x1b\[[0-9;]*m//g' | head -10 | while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error::${line//%/%25}"
-          done
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | awk -v RS='' '
+            /failing|[Ee]rror|[Aa]ssertion/ {
+              b = substr($0, 1, 4000);
+              gsub(/%/, "%25", b);
+              gsub(/\n/, "%0A", b);
+              print "::error::" b;
+            }' | head -10
           exit 0
 
       - name: Report the end of the test log
@@ -270,7 +285,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save the toolchain cache
-        if: always() && steps.toolchain.outputs.cache-hit != 'true'
+        if: always()
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
@@ -280,7 +295,11 @@ jobs:
             ~/.cargo/git
             ~/.cache/solana
             target
-          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}
+          # A rolling key: the toolchain cache has to survive failing runs, and
+          # an immutable key would freeze it at whatever the first run saved.
+          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_VERSION }}
 
       - name: Save the IDL as an artifact
         if: success()

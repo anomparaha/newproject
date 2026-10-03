@@ -253,14 +253,20 @@ pub mod vin_anchor {
     /// A dispute freezes the deal. The buyer, seller, or workshop may trigger it.
     pub fn freeze_deal(ctx: Context<FreezeDeal>, reason_hash: [u8; 32]) -> Result<()> {
         let caller = ctx.accounts.caller.key();
-        let deal = &ctx.accounts.deal;
-        require!(
-            caller == deal.buyer || caller == deal.seller || caller == deal.inspector,
-            VinError::Unauthorized
-        );
+        // The check borrows the deal, the write borrows it mutably, and the
+        // event wants the key. Scoping the immutable borrow keeps all three
+        // happy without cloning the account.
+        {
+            let deal = &ctx.accounts.deal;
+            require!(
+                caller == deal.buyer || caller == deal.seller || caller == deal.inspector,
+                VinError::Unauthorized
+            );
+        }
+        let deal_key = ctx.accounts.deal.key();
         ctx.accounts.deal.frozen = true;
         emit!(DealFrozenEvent {
-            deal: deal.key(),
+            deal: deal_key,
             reason_hash,
         });
         Ok(())
