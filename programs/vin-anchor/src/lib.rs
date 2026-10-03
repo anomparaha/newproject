@@ -848,73 +848,71 @@ pub struct SettleBond<'info> {
 }
 
 
-/// TEMPORARY DIAGNOSTIC. Logs a pubkey as its four little-endian u64 chunks
-/// under a tag, so the value survives the log format untouched. Remove it with
-/// the diagnostic block in `OpenDeal`.
-fn dbg_log_u64(tag: u64, key: &Pubkey) {
-    let bytes = key.to_bytes();
-    let chunk = |i: usize| {
-        u64::from_le_bytes([
-            bytes[i],
-            bytes[i + 1],
-            bytes[i + 2],
-            bytes[i + 3],
-            bytes[i + 4],
-            bytes[i + 5],
-            bytes[i + 6],
-            bytes[i + 7],
-        ])
-    };
-    anchor_lang::solana_program::log::sol_log_64(tag, chunk(0), chunk(8), chunk(16), chunk(24));
+/// TEMPORARY DIAGNOSTIC. Logs the 8-byte chunks of `bytes` (under `tag`,
+/// `tag+1`, ...) and returns the same bytes, so a real seed can be wrapped
+/// without changing what is hashed. The log line carries the slice length in
+/// the third slot. Remove with the diagnostic in `OpenDeal`.
+#[inline(never)]
+fn dbg_seed(tag: u64, bytes: &[u8]) -> &[u8] {
+    let len = bytes.len() as u64;
+    let mut i = 0usize;
+    while i < bytes.len() && i < 32 {
+        let end = if i + 8 < bytes.len() { i + 8 } else { bytes.len() };
+        let mut chunk = [0u8; 8];
+        chunk[..end - i].copy_from_slice(&bytes[i..end]);
+        anchor_lang::solana_program::log::sol_log_64(tag + (i as u64) / 8, u64::from_le_bytes(chunk), len, 0, 0);
+        i += 8;
+    }
+    bytes
+}
+
+/// TEMPORARY DIAGNOSTIC. Like `dbg_seed`, but returns an EMPTY slice, so a
+/// value can be logged from inside a seeds list without becoming a seed:
+/// hashing an empty slice is a no-op in the PDA hasher. Remove with the rest.
+#[inline(never)]
+fn dbg_void(tag: u64, bytes: &[u8]) -> &'static [u8] {
+    let len = bytes.len() as u64;
+    let mut i = 0usize;
+    while i < bytes.len() && i < 32 {
+        let end = if i + 8 < bytes.len() { i + 8 } else { bytes.len() };
+        let mut chunk = [0u8; 8];
+        chunk[..end - i].copy_from_slice(&bytes[i..end]);
+        anchor_lang::solana_program::log::sol_log_64(tag + (i as u64) / 8, u64::from_le_bytes(chunk), len, 0, 0);
+        i += 8;
+    }
+    &[]
+}
+
+/// TEMPORARY DIAGNOSTIC. Logs a single u64 without contributing a seed.
+#[inline(never)]
+fn dbg_void_u64(tag: u64, value: u64) -> &'static [u8] {
+    anchor_lang::solana_program::log::sol_log_64(tag, value, 0, 0, 0);
+    &[]
 }
 
 #[derive(Accounts)]
 #[instruction(vin_hash: [u8; 32], vehicle_amount: u64, inspection_amount: u64)]
 pub struct OpenDeal<'info> {
-    // TEMPORARY DIAGNOSTIC. Two things are checked here, in one run: whether
-    // the seeds checks derive what the source says they should, and whether the
-    // canonical form of the actor seeds behaves differently from the stored-bump
-    // form. `sol_log_64` is used instead of a formatted `msg!` because the
-    // formatted form crashed the program when it was tried in this position:
-    // each logged line is `tag, four little-endian u64 chunks of the key`.
-    // Remove this with the rest of the diagnostic.
-    #[account(
-        mut,
-        constraint = {
-            msg!("DBG-A start");
-            dbg_log_u64(0xd1, __program_id);
-            dbg_log_u64(0xd2, &crate::ID);
-            dbg_log_u64(0xd3, &buyer.key());
-            dbg_log_u64(0xd4, &buyer_actor.key());
-            anchor_lang::solana_program::log::sol_log_64(
-                0xd5,
-                buyer_actor.bump as u64,
-                seller_actor.bump as u64,
-                inspector_actor.bump as u64,
-                config.bump as u64,
-            );
-            let (find_addr, find_bump) = Pubkey::find_program_address(&[b"actor", buyer.key().as_ref()], __program_id);
-            dbg_log_u64(0xd6, &find_addr);
-            anchor_lang::solana_program::log::sol_log_64(0xd7, find_bump as u64, 0, 0, 0);
-            match Pubkey::create_program_address(&[b"actor", buyer.key().as_ref(), &[buyer_actor.bump][..]], __program_id) {
-                Ok(addr) => {
-                    dbg_log_u64(0xd8, &addr);
-                    anchor_lang::solana_program::log::sol_log_64(0xd9, (addr == buyer_actor.key()) as u64, 0, 0, 0);
-                }
-                Err(_) => anchor_lang::solana_program::log::sol_log_64(0xda, 1, 0, 0, 0),
-            }
-            msg!("DBG-A end");
-            true
-        }
-    )]
     pub buyer: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, Config>,
-    #[account(mut, seeds = [b"actor", buyer.key().as_ref()], bump)]
+    #[account(mut, seeds = [
+        dbg_seed(0xa0, b"actor"),
+        dbg_seed(0xa8, buyer.key().as_ref()),
+        dbg_void(0x60, __program_id.as_ref()),
+    ], bump)]
     pub buyer_actor: Account<'info, ActorAccount>,
-    #[account(mut, seeds = [b"actor", seller.key().as_ref()], bump)]
+    #[account(mut, seeds = [
+        dbg_seed(0xb0, b"actor"),
+        dbg_seed(0xb8, seller.key().as_ref()),
+        dbg_void(0x58, __program_id.as_ref()),
+    ], bump = seller_actor.bump)]
     pub seller_actor: Account<'info, ActorAccount>,
-    #[account(seeds = [b"actor", inspector.key().as_ref()], bump)]
+    #[account(seeds = [
+        dbg_seed(0xc0, b"actor"),
+        dbg_seed(0xc8, inspector.key().as_ref()),
+        dbg_void(0x50, __program_id.as_ref()),
+    ], bump = inspector_actor.bump)]
     pub inspector_actor: Account<'info, ActorAccount>,
     /// CHECK: seller wallet; identity is checked via seller_actor.
     pub seller: UncheckedAccount<'info>,
@@ -924,7 +922,15 @@ pub struct OpenDeal<'info> {
         init,
         payer = buyer,
         space = DealAccount::LEN,
-        seeds = [b"deal", vin_hash.as_ref(), buyer.key().as_ref()],
+        seeds = [
+            dbg_seed(0xe0, b"deal"),
+            dbg_seed(0xe8, vin_hash.as_ref()),
+            dbg_seed(0xf0, buyer.key().as_ref()),
+            dbg_void(0x80, __program_id.as_ref()),
+            dbg_void_u64(0x88, buyer_actor.bump as u64),
+            dbg_void_u64(0x90, seller_actor.bump as u64),
+            dbg_void_u64(0x98, inspector_actor.bump as u64),
+        ],
         bump
     )]
     pub deal: Account<'info, DealAccount>,
