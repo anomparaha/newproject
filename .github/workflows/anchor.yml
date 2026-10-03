@@ -4,21 +4,22 @@ name: Anchor (Solana program)
 # Run it manually through "Run workflow" until the program is actually in use,
 # so the main pipeline stays fast and failures point at the right place.
 #
-# Solana and Anchor are pinned on purpose: Anchor 0.30.1 pairs with the 1.18.x
-# Solana CLI, and a much newer CLI tends to fail inside `anchor build` with a
-# platform-tools mismatch that is hard to read. If the pinned Solana release is
-# ever unavailable, the step falls back to stable and says so in the log.
+# Toolchain generations, learned the hard way. `cargo build-sbf` runs
+# `cargo metadata` with the cargo on PATH and then builds with the cargo inside
+# the Solana platform-tools. Two different generations in one build does not
+# work: the newer cargo writes a version 4 lock file the older bundled cargo
+# cannot read, and it resolves crates written for editions the older bundled
+# rustc does not know. The repository ships no Cargo.lock, so resolution picks
+# today's crates.
 #
-# Rust must match the generation of the Solana platform-tools, and 1.79.0 is
-# what v1.18.26 ships. `cargo build-sbf` runs `cargo metadata` with the cargo on
-# PATH and then builds with the cargo inside platform-tools; a newer cargo on
-# PATH writes a version 4 lock file that the older bundled cargo cannot read,
-# and it happily resolves crates written for editions the bundled rustc does
-# not know. Keeping the two the same generation is the whole trick.
+# Pinning Rust 1.79 because Solana v1.18.26 shipped it was therefore fatal:
+# getrandom, block-buffer and friends ask for the 2024 edition and the build
+# stopped during metadata, before a line of the program was compiled. Solana and
+# Rust now come from stable, so both cargos belong to the same generation.
 #
-# The program no longer has dev-dependencies. solana-program-test and
-# solana-sdk were never used (the tests are TypeScript) and they pulled in a
-# banks-server tree that required a modern Rust.
+# TODO: pin both to the exact versions this run reports. The version-reporting
+# step prints them, and they belong in these two variables once they are known
+# to build the program.
 #
 # Reading a failure back is part of the job. The raw log of a workflow run and
 # the artifacts it uploads are served from hosts that some networks cannot
@@ -36,8 +37,8 @@ on:
       - '.github/workflows/anchor.yml'
 
 env:
-  SOLANA_VERSION: v1.18.26
-  RUST_VERSION: '1.79.0'
+  SOLANA_VERSION: stable
+  RUST_VERSION: stable
   ANCHOR_VERSION: '0.30.1'
 
 jobs:
@@ -73,11 +74,15 @@ jobs:
       - name: Install the Solana CLI
         run: |
           set -euo pipefail
-          if ! sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_VERSION}/install)"; then
-            echo "::warning::Solana ${SOLANA_VERSION} could not be installed; falling back to stable."
-            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-          fi
+          sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_VERSION}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Report the toolchain versions
+        if: always()
+        run: |
+          echo "::notice::$(rustc --version 2>&1 | head -1)"
+          echo "::notice::$(solana --version 2>&1 | head -1)"
+          echo "::notice::$(anchor --version 2>&1 | head -1)"
 
       - name: Create the throwaway test wallet
         run: |
