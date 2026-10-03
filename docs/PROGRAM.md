@@ -2,11 +2,13 @@
 
 Referensi smart contract VIN: apa yang sudah dibuat, apa yang dijaga, dan apa yang **belum**.
 
-> **Status jujur:** sumbernya lengkap dan sudah melalui review + perbaikan (3 temuan, lihat §6),
-> **tetapi belum pernah dikompilasi atau di-deploy**. Sandbox pengembangan ini tidak bisa memasang
+> **Status jujur:** program **sudah dikompilasi** dan test suite **sudah berjalan** di GitHub
+> Actions (SBF build + IDL + validator lokal), tetapi **baru 1 dari 11 skenario yang lulus**, dan
+> **belum pernah di-deploy** ke devnet/mainnet. Sandbox pengembangan ini tidak bisa memasang
 > Rust/crates.io (host `static.rust-lang.org`, `crates.io`, dan semua mirror diblokir; hanya npm,
-> PyPI, dan GitHub terbuka). Jalankan `anchor build && anchor test` di mesin/CI yang punya toolchain.
-> Sampai itu terjadi, **tidak ada satu pun klaim dana on-chain yang boleh dibuat.**
+> PyPI, dan GitHub terbuka), jadi kompilasi dan test hanya bisa dijalan-kan lewat CI atau di mesin
+> yang punya toolchain — resepnya di `docs/LOCAL_TEST.md`. Sampai suite-nya hijau, **tidak ada satu
+> pun klaim dana on-chain yang boleh dibuat.**
 
 ---
 
