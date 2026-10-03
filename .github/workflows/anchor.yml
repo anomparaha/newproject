@@ -17,6 +17,9 @@ name: Anchor (Solana program)
 # stopped during metadata, before a line of the program was compiled. Solana and
 # Rust now come from stable, so both cargos belong to the same generation.
 #
+# The Anchor CLI cannot be compiled by a current Rust either, so it comes from
+# the prebuilt binary published with the release tag.
+#
 # TODO: pin both to the exact versions this run reports. The version-reporting
 # step prints them, and they belong in these two variables once they are known
 # to build the program.
@@ -77,13 +80,6 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_VERSION}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
-      - name: Report the toolchain versions
-        if: always()
-        run: |
-          echo "::notice::$(rustc --version 2>&1 | head -1)"
-          echo "::notice::$(solana --version 2>&1 | head -1)"
-          echo "::notice::$(anchor --version 2>&1 | head -1)"
-
       - name: Create the throwaway test wallet
         run: |
           set -euo pipefail
@@ -99,22 +95,36 @@ jobs:
       - name: Install the Anchor CLI
         run: |
           set -euo pipefail
-          # Install anchor-cli pinned to the v0.30.1 tag directly instead of
-          # building avm from Anchor's master branch. Building avm from master
-          # pulls a Cargo.lock whose version/MSRV is newer than the pinned Rust
-          # toolchain, so `cargo install ... avm --locked` aborted in ~4s before
-          # anchor-cli was ever built. The tagged release locks against a Rust
-          # version compatible with the one pinned above.
-          #
-          # The binary lands in ~/.cargo/bin, which the cache restores, so the
-          # rebuild only happens on a cold cache.
+          # The binary lands in ~/.cargo/bin, which the cache restores, so this
+          # only runs on a cold cache.
           if command -v anchor >/dev/null 2>&1; then
-            echo "Restored the Anchor CLI from the cache; skipping the rebuild."
+            echo "Restored the Anchor CLI from the cache; skipping the install."
+            anchor --version
+            exit 0
+          fi
+
+          # Anchor 0.30.1 predates the Rust of today: building it with 1.99
+          # fails. The release publishes a prebuilt binary for this platform,
+          # which is what avm would download anyway; compiling the tagged
+          # source with the Rust generation it was written for is the fallback.
+          url="https://github.com/coral-xyz/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu"
+          if curl -sSfL "$url" -o /tmp/anchor-cli; then
+            install -m 0755 /tmp/anchor-cli "$HOME/.cargo/bin/anchor"
+            echo "Installed the prebuilt Anchor CLI published with the release."
           else
-            cargo install --git https://github.com/coral-xyz/anchor \
+            echo "::warning::No prebuilt Anchor CLI for this platform; compiling it with Rust 1.79."
+            rustup toolchain install 1.79.0 --profile minimal
+            cargo +1.79.0 install --git https://github.com/coral-xyz/anchor \
               --tag "v${ANCHOR_VERSION}" anchor-cli --locked --force
           fi
           anchor --version
+
+      - name: Report the toolchain versions
+        if: always()
+        run: |
+          echo "::notice::$(rustc --version 2>&1 | head -1)"
+          echo "::notice::$(solana --version 2>&1 | head -1)"
+          echo "::notice::$(anchor --version 2>&1 | head -1)"
 
       - uses: actions/setup-node@v4
         with:
