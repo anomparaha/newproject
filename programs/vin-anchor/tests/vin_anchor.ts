@@ -81,74 +81,6 @@ describe('vin-anchor', () => {
   let feeToken: PublicKey;
 
   before(async () => {
-    // TEMPORARY DIAGNOSTIC. `openDeal` fails the seeds check on `buyer_actor`
-    // even though the seed is that wallet's actor PDA. The client derives PDAs
-    // from the camelCased IDL and the fields of that IDL are what it reads, so
-    // both are printed here: what the IDL says the seed is, what PDAs that
-    // produces, and the account metas the client actually sends. Remove this
-    // block once the accounts resolve.
-    const clientIdl = (program as unknown as {
-      idl: {
-        instructions: Array<{
-          name: string;
-          accounts: Array<{ name: string; pda?: { seeds: Array<Record<string, string>> } }>;
-        }>;
-      };
-    }).idl;
-    for (const name of ['openDeal', 'registerActor']) {
-      const ix = clientIdl.instructions.find((i) => i.name === name);
-      console.log(`IDL ${name}: ${ix ? JSON.stringify(ix.accounts.map((a) => ({ n: a.name, seeds: a.pda?.seeds }))) : 'NOT IN THE IDL'}`);
-    }
-    for (const [label, wallet] of [['buyer', buyer.publicKey], ['seller', seller.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
-      const [derived] = PublicKey.findProgramAddressSync([Buffer.from('actor'), wallet.toBuffer()], program.programId);
-      console.log(`actor PDA ${label}: from seeds ${derived.toBase58()} | test expects ${actorPda(wallet).toBase58()} | match ${derived.equals(actorPda(wallet))}`);
-    }
-    console.log(`program id the client uses: ${program.programId.toBase58()}`);
-    for (const [label, wallet] of [['buyer', buyer.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
-      const addr = actorPda(wallet);
-      const [canonicalAddr, canonicalBump] = PublicKey.findProgramAddressSync(
-        [Buffer.from('actor'), wallet.toBuffer()],
-        program.programId,
-      );
-      const info = await provider.connection.getAccountInfo(addr);
-      // ActorAccount: 8 discriminator, then wallet 32, role 1, attestation 32,
-      // revoked 1, bond_locked 8, bump 1 - so the bump is byte 82.
-      const storedBump = info && info.data.length > 82 ? info.data[82] : 'no account';
-      console.log(
-        `actor ${label}: addr ${addr.toBase58()} = canonical ${canonicalAddr.toBase58()} (${addr.equals(canonicalAddr)}) | owner ${info ? info.owner.toBase58() : 'MISSING'} | len ${info ? info.data.length : 0} | storedBump ${storedBump} vs canonicalBump ${canonicalBump}`,
-      );
-    }
-    try {
-      const builtIx = await program.methods
-        .openDeal(vinHash, new anchor.BN('0'), new anchor.BN('0'))
-        .accounts({
-          buyer: buyer.publicKey,
-          // The client's account resolver derives every PDA the instruction
-          // needs from the IDL. For these three it fails silently - the error is
-          // swallowed and the account is left unset - and an unset account is
-          // filled with the default pubkey, which the program then rejects as a
-          // seeded account whose seeds do not match. They are the same PDAs the
-          // resolver derives from the same seeds, so they are passed in
-          // directly.
-          buyerActor: actorPda(buyer.publicKey),
-          sellerActor: actorPda(seller.publicKey),
-          inspectorActor: actorPda(inspector.publicKey),
-          seller: seller.publicKey,
-          inspector: inspector.publicKey,
-          deal,
-          vehicleVault: vaultPda(deal, LEG_VEHICLE),
-          inspectionVault: vaultPda(deal, LEG_INSPECTION),
-          usdcMint,
-        })
-        .instruction();
-      console.log('openDeal metas the client sends:');
-      for (const key of builtIx.keys) {
-        console.log(`  ${key.pubkey.toBase58()} signer=${key.isSigner} writable=${key.isWritable}`);
-      }
-    } catch (e) {
-      console.log(`openDeal instruction could not be built: ${String(e)}`);
-    }
-
     for (const who of [admin, arbiter, relayer, seller, inspector, buyer]) {
       const sig = await provider.connection.requestAirdrop(who.publicKey, 2 * LAMPORTS_PER_SOL);
       await provider.connection.confirmTransaction(sig);
@@ -181,6 +113,68 @@ describe('vin-anchor', () => {
         .registerActor(role, hash(role))
         .accounts({ payer: admin.publicKey, wallet, actor: actorPda(wallet) })
         .rpc();
+    }
+
+    // TEMPORARY DIAGNOSTIC. `openDeal` fails the seeds check on `buyer_actor`,
+    // while every other instruction passes the same kind of check - so the
+    // seeds, the bump and the program id are all known good, and the question is
+    // what the client actually puts in each account slot. This prints, once,
+    // after the accounts exist: the keys involved, the stored bump against the
+    // canonical bump, and the account metas the client builds for one working
+    // instruction (`slashBond`) next to the failing one. Remove it once the
+    // accounts resolve.
+    const idlAddress = (idl as unknown as { address?: string }).address;
+    console.log(`program id: client ${program.programId.toBase58()} | IDL address (declare_id) ${idlAddress}`);
+    console.log(`wallets: admin ${admin.publicKey.toBase58()} | buyer ${buyer.publicKey.toBase58()} | seller ${seller.publicKey.toBase58()} | inspector ${inspector.publicKey.toBase58()}`);
+    for (const [label, wallet] of [['buyer', buyer.publicKey], ['seller', seller.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
+      const addr = actorPda(wallet);
+      const [, canonicalBump] = PublicKey.findProgramAddressSync([Buffer.from('actor'), wallet.toBuffer()], program.programId);
+      const info = await provider.connection.getAccountInfo(addr);
+      // ActorAccount: 8 discriminator, wallet 32, role 1, attestation 32,
+      // revoked 1, bond_locked 8, bump 1 - so the bump is byte 82.
+      const storedBump = info && info.data.length > 82 ? info.data[82] : 'no account';
+      console.log(`actor ${label}: ${addr.toBase58()} | owner ${info ? info.owner.toBase58() : 'MISSING'} | len ${info ? info.data.length : 0} | storedBump ${storedBump} vs canonicalBump ${canonicalBump}`);
+    }
+    const showMetas = async (label: string, ix: anchor.web3.TransactionInstruction, ixName: string) => {
+      const ixIdl = (program as unknown as { idl: { instructions: Array<{ name: string; accounts: Array<{ name: string }> }> } }).idl.instructions.find((i) => i.name === ixName);
+      console.log(`${label} metas (${ix.keys.length}):`);
+      ix.keys.forEach((key, i) => {
+        console.log(`  [${i}] ${ixIdl && ixIdl.accounts[i] ? ixIdl.accounts[i].name : 'EXTRA'} ${key.pubkey.toBase58()} signer=${key.isSigner} writable=${key.isWritable}`);
+      });
+    };
+    try {
+      const ix = await program.methods
+        .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
+        .accounts({
+          buyer: buyer.publicKey,
+          buyerActor: actorPda(buyer.publicKey),
+          sellerActor: actorPda(seller.publicKey),
+          inspectorActor: actorPda(inspector.publicKey),
+          seller: seller.publicKey,
+          inspector: inspector.publicKey,
+          deal,
+          vehicleVault: vaultPda(deal, LEG_VEHICLE),
+          inspectionVault: vaultPda(deal, LEG_INSPECTION),
+          usdcMint,
+        })
+        .instruction();
+      await showMetas('openDeal (fails)', ix, 'openDeal');
+    } catch (e) {
+      console.log(`openDeal instruction could not be built: ${String(e)}`);
+    }
+    try {
+      const ix = await program.methods
+        .slashBond(new anchor.BN(BOND_AMOUNT.toString()), hash(51))
+        .accounts({
+          arbiter: arbiter.publicKey,
+          actor: actorPda(inspector.publicKey),
+          bondVault: bondVaultPda(actorPda(inspector.publicKey)),
+          disputeFund,
+        })
+        .instruction();
+      await showMetas('slashBond (passes)', ix, 'slashBond');
+    } catch (e) {
+      console.log(`slashBond instruction could not be built: ${String(e)}`);
     }
   });
 
@@ -437,6 +431,12 @@ describe('vin-anchor', () => {
     const sig = await provider.connection.requestAirdrop(buyer2.publicKey, 2 * LAMPORTS_PER_SOL);
     await provider.connection.confirmTransaction(sig);
     const buyer2Token = await createAccount(provider.connection, buyer2, usdcMint, buyer2.publicKey);
+    // `open_deal` requires the buyer to be a registered actor, and this wallet is
+    // new, so it is registered here the same way the others were.
+    await program.methods
+      .registerActor(ROLE_BUYER, hash(90))
+      .accounts({ payer: admin.publicKey, wallet: buyer2.publicKey, actor: actorPda(buyer2.publicKey) })
+      .rpc();
     // The mint authority is `buyer` (see `createMint` in the setup), and SPL
     // Token checks the authority signature, so minting is signed by `buyer`
     // even though the tokens land in buyer2's account.
