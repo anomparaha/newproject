@@ -142,10 +142,36 @@ jobs:
         working-directory: programs/vin-anchor
         run: npm ci
 
+      # Two commands on purpose. `anchor build` compiles the SBF binary and
+      # then generates the IDL, and the IDL step of Anchor 0.30.1 sets
+      # RUSTFLAGS=--cfg procmacro2_semver_exempt on its own cargo invocation.
+      # That switch turns on proc-macro2's semver-exempt API, which called
+      # `Span::source_file()` - a method rustc removed in 1.88 - so on a current
+      # stable Rust the IDL step cannot compile: it dies inside proc-macro2 or
+      # anchor-syn and fails the whole build. Splitting the two keeps the SBF
+      # compile on its normal flags, and the step below drops the switch (cargo
+      # prefers CARGO_ENCODED_RUSTFLAGS over RUSTFLAGS). Nothing is lost by
+      # dropping it: the switch exists so IDL generation can resolve type
+      # aliases and external types, and this program has neither in its IDL.
       - name: Build the program
         run: |
           set -o pipefail
-          anchor build 2>&1 | tee /tmp/anchor-build.log
+          anchor build --no-idl 2>&1 | tee /tmp/anchor-build.log
+
+      # The output flags matter: `anchor idl build` prints to stdout by default,
+      # and both files have to land in the workspace target directory, which is
+      # where `anchor test` and the TypeScript tests read them. The log is
+      # appended so the reporting steps further down see this failure too.
+      - name: Build the IDL
+        env:
+          CARGO_ENCODED_RUSTFLAGS: ""
+        run: |
+          set -o pipefail
+          anchor idl build \
+            --program-name vin-anchor \
+            --out target/idl/vin_anchor.json \
+            --out-ts target/types/vin_anchor.ts \
+            2>&1 | tee -a /tmp/anchor-build.log
 
       # GitHub keeps ten annotations per step and silently drops the rest, and
       # the useful lines of a failed build sit in different places: the command

@@ -21,4 +21,8 @@ cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "cd programs/vin-anchor && npm test"
+# Anchor runs this from the workspace root. That is where Anchor.toml and
+# target/idl live, so staying there is what lets the tests find both; the tests
+# are TypeScript with their own package.json, so the ts-mocha binary and the
+# tsconfig are named by path instead of relying on the current directory.
+test = "programs/vin-anchor/node_modules/.bin/ts-mocha -p programs/vin-anchor/tsconfig.json -t 1000000 'programs/vin-anchor/tests/**/*.ts'"

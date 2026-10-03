@@ -16,6 +16,6 @@
   },
   "include": [
     "tests/**/*.ts",
-    "target/types/**/*.ts"
+    "../../target/types/**/*.ts"
   ]
 }

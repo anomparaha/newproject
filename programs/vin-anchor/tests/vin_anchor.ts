@@ -17,7 +17,8 @@ import { Program } from '@coral-xyz/anchor';
 import { Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createMint, createAccount, mintTo, getAccount } from '@solana/spl-token';
 import assert from 'assert';
-import { VinAnchor } from '../target/types/vin_anchor';
+import idl from '../../../target/idl/vin_anchor.json';
+import { VinAnchor } from '../../../target/types/vin_anchor';
 
 const LEG_VEHICLE = 0;
 const LEG_INSPECTION = 1;
@@ -40,7 +41,17 @@ const hash = (byte: number) => Array.from(Buffer.alloc(32, byte));
 describe('vin-anchor', () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
-  const program = anchor.workspace.VinAnchor as Program<VinAnchor>;
+  // The IDL is named here instead of going through `anchor.workspace`, which
+  // parses Anchor.toml from the working directory: this file sits outside the
+  // workspace root, and the explicit form keeps the test independent of where
+  // it is started from. Anchor 0.30 takes the program ID from the IDL itself,
+  // so it is set here; it has to match `declare_id!` in the program and
+  // `[programs.localnet]` in Anchor.toml.
+  const PROGRAM_ID = new PublicKey('Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS');
+  const program = new Program<VinAnchor>(
+    { ...(idl as anchor.Idl), address: PROGRAM_ID.toBase58() },
+    provider,
+  );
   const admin = provider.wallet as anchor.Wallet;
 
   const arbiter = Keypair.generate();

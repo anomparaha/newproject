@@ -13,9 +13,9 @@
 //! 5. **Only hashes go on-chain.** Full VINs, photos, titles, and personal data
 //!    stay off-chain. The receipt NFT is a claim trail, not a vehicle title.
 //!
-//! STATUS: written as a production path, **never compiled or deployed**
-//! in this development environment (no Rust/Solana toolchain available in
-//! sandbox). Run `anchor build && anchor test`, then switch `declare_id!`.
+//! STATUS: compiles for SBF in CI (see .github/workflows/anchor.yml). It has
+//! never been deployed to any cluster, and `declare_id!` below is still the
+//! placeholder from `anchor init` - switch it before a real deployment.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -1190,80 +1190,4 @@ pub enum VinError {
     InvalidFeeDestination,
     #[msg("Fund split is not exact: the remainder would be stranded in the vault")]
     InexactSettlement,
-}
-
-// ---------------------------------------------------------------------------
-// TEMPORARY DIAGNOSTIC PROBES. They exist to find out which account attribute
-// makes `#[derive(Accounts)]` produce no impl. Remove them once LockBond
-// compiles; they are not part of the program.
-// ---------------------------------------------------------------------------
-#[derive(Accounts)]
-pub struct ProbeInitMint<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    #[account(init, payer = payer, mint::decimals = 6, mint::authority = payer)]
-    pub mint: Account<'info, Mint>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    pub rent: Sysvar<'info, Rent>,
-}
-
-#[derive(Accounts)]
-pub struct ProbeInitIfNeededMint<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    #[account(init_if_needed, payer = payer, mint::decimals = 6, mint::authority = payer)]
-    pub mint: Account<'info, Mint>,
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    pub rent: Sysvar<'info, Rent>,
-}
-
-#[derive(Accounts)]
-pub struct ProbeBondVault<'info> {
-    #[account(mut)]
-    pub bonder: Signer<'info>,
-    #[account(seeds = [b"config"], bump = config.bump)]
-    pub config: Account<'info, Config>,
-    #[account(mut, seeds = [b"actor", bonder.key().as_ref()], bump = actor.bump)]
-    pub actor: Account<'info, ActorAccount>,
-    #[account(mut)]
-    pub bonder_token: Account<'info, TokenAccount>,
-    /// Anchor takes the mint of an initialised token account from an account
-    /// field, not from a public key expression, so the bond currency is named
-    /// here. The address constraint keeps the original intent: the bond must be
-    /// denominated in whatever the workshop's token account holds.
-    #[account(address = bonder_token.mint)]
-    pub usdc_mint: Account<'info, Mint>,
-    #[account(
-        init_if_needed,
-        payer = bonder,
-        token::mint = usdc_mint,
-        token::authority = actor,
-        seeds = [b"bond_vault", actor.key().as_ref()],
-        bump
-    )]
-    pub bond_vault: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
-}
-
-/// Referencing each probe through Context is what asks the compiler whether
-/// the derive produced an Accounts impl.
-#[allow(dead_code)]
-mod probes {
-    use super::*;
-
-    pub fn probe_init_mint(_ctx: Context<ProbeInitMint>) -> Result<()> {
-        Ok(())
-    }
-
-    pub fn probe_init_if_needed_mint(_ctx: Context<ProbeInitIfNeededMint>) -> Result<()> {
-        Ok(())
-    }
-
-    pub fn probe_bond_vault(_ctx: Context<ProbeBondVault>) -> Result<()> {
-        Ok(())
-    }
 }
