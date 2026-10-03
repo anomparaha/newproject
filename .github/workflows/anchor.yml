@@ -335,14 +335,18 @@ jobs:
           cd programs/vin-anchor
           RUSTC_BOOTSTRAP=1 cargo rustc --profile=check --lib -- -Zunpretty=expanded > /tmp/expanded.rs 2> /tmp/expanded-err.txt || true
           echo "expanded lines: $(wc -l < /tmp/expanded.rs)"
-          echo "--- expand stderr (tail) ---"
-          tail -15 /tmp/expanded-err.txt
+          echo "--- bindings of deal ---"
+          grep -n "let deal" /tmp/expanded.rs | head -12
+          echo "--- deal.key() sites ---"
+          grep -n "deal\.key()" /tmp/expanded.rs | head -20
           echo "--- ConstraintSeeds sites ---"
           grep -n "ConstraintSeeds" /tmp/expanded.rs | head -30
-          echo "--- OpenDeal Accounts impl ---"
-          awk '/for OpenDeal/{f=1} f{print} f && ++n>260 {exit}' /tmp/expanded.rs | sed -e 's/^/EXPAND: /' | head -260
           echo "--- find_program_address sites ---"
-          grep -n "find_program_address" /tmp/expanded.rs | head -20
+          grep -n "find_program_address" /tmp/expanded.rs | head -30
+          echo "--- around the deal seed list ---"
+          n=$(grep -n "dbg_find" /tmp/expanded.rs | head -1 | cut -d: -f1)
+          echo "anchor line: $n"
+          sed -n "$((n>150 ? n-150 : 1)),$((n+50))p" /tmp/expanded.rs | sed -e 's/^/EXPD: /'
           exit 0
 
       - name: Run the Anchor tests
