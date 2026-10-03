@@ -850,7 +850,58 @@ pub struct SettleBond<'info> {
 #[derive(Accounts)]
 #[instruction(vin_hash: [u8; 32], vehicle_amount: u64, inspection_amount: u64)]
 pub struct OpenDeal<'info> {
-    #[account(mut)]
+    // TEMPORARY DIAGNOSTIC. This constraint runs before the seeds checks and
+    // prints, from inside the program, what the seeds checks are about to
+    // compute: the program id the entry point received, the keys this struct
+    // bound, and the addresses derived from the same seeds the source uses. It
+    // exists to explain the addresses in the ConstraintSeeds error instead of
+    // guessing at them. Remove it with the rest of the diagnostic.
+    #[account(
+        mut,
+        constraint = {
+            msg!("DBG pid={} crate_id={}", __program_id, crate::ID);
+            msg!(
+                "DBG keys buyer={} config={} buyer_actor={} seller_actor={} inspector_actor={}",
+                buyer.key(), config.key(), buyer_actor.key(), seller_actor.key(), inspector_actor.key()
+            );
+            msg!("DBG keys seller={} inspector={} usdc_mint={}", seller.key(), inspector.key(), usdc_mint.key());
+            msg!(
+                "DBG init keys deal={} vehicle_vault={} inspection_vault={}",
+                deal.key(), vehicle_vault.key(), inspection_vault.key()
+            );
+            msg!(
+                "DBG actor bumps buyer={} seller={} inspector={} lens {} {} {}",
+                buyer_actor.bump, seller_actor.bump, inspector_actor.bump,
+                buyer_actor.to_account_info().data_len(),
+                seller_actor.to_account_info().data_len(),
+                inspector_actor.to_account_info().data_len()
+            );
+            msg!(
+                "DBG find([actor,buyer])={}",
+                Pubkey::find_program_address(&[b"actor", buyer.key().as_ref()], __program_id).0
+            );
+            match Pubkey::create_program_address(
+                &[b"actor", buyer.key().as_ref(), &[buyer_actor.bump][..]],
+                __program_id,
+            ) {
+                Ok(addr) => msg!("DBG create([actor,buyer],stored_bump)={} equal_slot={}", addr, addr == buyer_actor.key()),
+                Err(_) => msg!("DBG create([actor,buyer],stored_bump) errored"),
+            }
+            match Pubkey::create_program_address(
+                &[b"actor", seller.key().as_ref(), &[seller_actor.bump][..]],
+                __program_id,
+            ) {
+                Ok(addr) => msg!("DBG create([actor,seller],stored_bump)={} equal_slot={}", addr, addr == seller_actor.key()),
+                Err(_) => msg!("DBG create([actor,seller],stored_bump) errored"),
+            }
+            msg!(
+                "DBG find([actor,buyer]) with crate_id={}",
+                Pubkey::find_program_address(&[b"actor", buyer.key().as_ref()], &crate::ID).0
+            );
+            msg!("DBG args vin0={} vehicle={} inspection={}", vin_hash[0], vehicle_amount, inspection_amount);
+            true
+        }
+    )]
     pub buyer: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, Config>,
