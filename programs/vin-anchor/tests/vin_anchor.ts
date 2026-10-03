@@ -105,7 +105,7 @@ describe('vin-anchor', () => {
     }
   });
 
-  it('1. rejects open_deal when the workshop has not locked a bond (BondRequired)'
+  it('1. rejects open_deal when the workshop has not locked a bond (BondRequired)', async () => {
     deal = dealPda(buyer.publicKey);
     await assert.rejects(
       program.methods
@@ -124,7 +124,7 @@ describe('vin-anchor', () => {
     );
   });
 
-  it('2. opens a deal with TWO separate vaults once the bond is locked'
+  it('2. opens a deal with TWO separate vaults once the bond is locked', async () => {
     // The workshop locks a capacity bond.
     await program.methods
       .lockBond(new anchor.BN(BOND_AMOUNT.toString()), 1)
@@ -159,7 +159,7 @@ describe('vin-anchor', () => {
     assert.equal(inspectionVault.amount, 0n);
   });
 
-  it('3. rejects funding above the locked amount (OverFunded)'
+  it('3. rejects funding above the locked amount (OverFunded)', async () => {
     await assert.rejects(
       program.methods
         .fundLeg(LEG_VEHICLE, new anchor.BN((VEHICLE_AMOUNT + 1n).toString()))
@@ -176,7 +176,7 @@ describe('vin-anchor', () => {
     );
   });
 
-  it('4. funds both legs, then each vault balance matches its own amount'
+  it('4. funds both legs, then each vault balance matches its own amount', async () => {
     await program.methods
       .fundLeg(LEG_VEHICLE, new anchor.BN(VEHICLE_AMOUNT.toString()))
       .accounts({
@@ -207,7 +207,7 @@ describe('vin-anchor', () => {
     assert.equal(inspectionVault.amount, INSPECTION_AMOUNT);
   });
 
-  it('5. inspection funds can release first while vehicle funds stay locked'
+  it('5. inspection funds can release first while vehicle funds stay locked', async () => {
     await program.methods
       .releaseLeg(LEG_INSPECTION, new anchor.BN(INSPECTION_AMOUNT.toString()), hash(21), new anchor.BN(0))
       .accounts({
@@ -226,7 +226,7 @@ describe('vin-anchor', () => {
     assert.equal((await getAccount(provider.connection, vaultPda(deal, LEG_VEHICLE))).amount, VEHICLE_AMOUNT);
   });
 
-  it('6. REGRESSION: a frozen deal rejects release_leg AND refund_leg (no bypassing arbitration)'
+  it('6. REGRESSION: a frozen deal rejects release_leg AND refund_leg (no bypassing arbitration)', async () => {
     await program.methods
       .freezeDeal(hash(31))
       .accounts({ caller: buyer.publicKey, deal })
@@ -268,7 +268,7 @@ describe('vin-anchor', () => {
     );
   });
 
-  it('7. an arbitration ruling must add up EXACTLY; a short split is rejected'
+  it('7. an arbitration ruling must add up EXACTLY; a short split is rejected', async () => {
     await assert.rejects(
       program.methods
         .resolveDispute(DECISION_SPLIT, new anchor.BN('1000000'), new anchor.BN('2000000'), new anchor.BN(0), hash(41))
@@ -287,7 +287,7 @@ describe('vin-anchor', () => {
     );
   });
 
-  it('8. a refund_buyer ruling empties both vaults with nothing left'
+  it('8. a refund_buyer ruling empties both vaults with nothing left', async () => {
     await program.methods
       .resolveDispute(
         DECISION_BOND_SLASHED,
@@ -312,7 +312,7 @@ describe('vin-anchor', () => {
     assert.equal((await getAccount(provider.connection, vaultPda(deal, LEG_INSPECTION))).amount, 0n);
   });
 
-  it('9. a slashed bond goes to the DISPUTE FUND, not an admin/relayer wallet'
+  it('9. a slashed bond goes to the DISPUTE FUND, not an admin/relayer wallet', async () => {
     const before = (await getAccount(provider.connection, disputeFund)).amount;
     await program.methods
       .slashBond(new anchor.BN(BOND_AMOUNT.toString()), hash(51))
@@ -330,7 +330,7 @@ describe('vin-anchor', () => {
     assert.equal((await getAccount(provider.connection, feeToken)).amount, 0n);
   });
 
-  it('10. HAPPY PATH: both legs settled -> deal completed -> receipt may be recorded'
+  it('10. HAPPY PATH: both legs settled -> deal completed -> receipt may be recorded', async () => {
     // Regression for the flow finding: `release_leg` never marked the deal
     // `completed`, so on the happy path a receipt could NEVER be recorded.
     const buyer2 = Keypair.generate();
@@ -431,7 +431,7 @@ describe('vin-anchor', () => {
     assert.equal(Buffer.from(note.evidenceRoot).toString('hex'), Buffer.from(hash(83)).toString('hex'));
   });
 
-  it('11. receipt: only after the deal closes, and it cannot be overwritten'
+  it('11. receipt: only after the deal closes, and it cannot be overwritten', async () => {
     await program.methods
       .recordNote(buyer.publicKey, new anchor.BN(1), hash(61), PublicKey.default)
       .accounts({ relayer: relayer.publicKey, deal, note: notePda(deal, 1n) })
