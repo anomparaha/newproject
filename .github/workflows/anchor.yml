@@ -4,10 +4,18 @@ name: Anchor (Solana program)
 # Run it manually through "Run workflow" until the program is actually in use,
 # so the main pipeline stays fast and failures point at the right place.
 #
-# Toolchain versions are pinned on purpose. Anchor 0.30.1 pairs with the 1.18.x
-# Solana CLI; a much newer CLI tends to fail inside `anchor build` with a
+# Solana and Anchor are pinned on purpose: Anchor 0.30.1 pairs with the 1.18.x
+# Solana CLI, and a much newer CLI tends to fail inside `anchor build` with a
 # platform-tools mismatch that is hard to read. If the pinned Solana release is
 # ever unavailable, the step falls back to stable and says so in the log.
+#
+# Rust is deliberately NOT pinned. The program itself is compiled by the
+# rustc bundled in the Solana platform-tools, so the Rust we install here is
+# only there to build the Anchor CLI and to run `cargo metadata`, which
+# `cargo build-sbf` calls before it starts. Cargo 1.79 cannot even parse a
+# manifest that asks for the 2024 edition, and the repository does not ship a
+# Cargo.lock, so resolution picks up current crates and the build stopped with
+# `feature edition2024 is required` before compiling a line of the program.
 #
 # Reading a failure back is part of the job. The raw log of a workflow run and
 # the artifacts it uploads are served from hosts that some networks cannot
@@ -26,7 +34,7 @@ on:
 
 env:
   SOLANA_VERSION: v1.18.26
-  RUST_VERSION: '1.79.0'
+  RUST_VERSION: stable
   ANCHOR_VERSION: '0.30.1'
 
 jobs:
