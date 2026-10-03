@@ -23,6 +23,9 @@ anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
 anchor-spl = "0.30.1"
 mpl-core = { version = "0.7", optional = true }
 
-[dev-dependencies]
-solana-program-test = "1.18"
-solana-sdk = "1.18"
+# No Rust-side unit tests: the program is exercised through the Anchor
+# TypeScript tests, which build a local validator and drive the instructions
+# the way a client does. solana-program-test and solana-sdk used to sit here
+# unused, and they dragged the whole banks-server dependency tree into every
+# resolution - including crates that need a Rust newer than the platform-tools
+# toolchain that actually compiles this program.
