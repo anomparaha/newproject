@@ -176,6 +176,58 @@ pub mod vin_anchor {
         Ok(())
     }
 
+    /// TEMPORARY DIAGNOSTIC entry point (see `DebugSeeds`). Logs what the
+    /// program derives for the actor and deal seeds; it changes no state.
+    pub fn debug_seeds(ctx: Context<DebugSeeds>, vin_hash: [u8; 32]) -> Result<()> {
+        let program_id = ctx.program_id;
+        let buyer_key = ctx.accounts.buyer.key();
+        let actor_key = ctx.accounts.buyer_actor.key();
+        let stored_bump = {
+            let data = ctx.accounts.buyer_actor.try_borrow_data()?;
+            if data.len() > 82 {
+                data[82]
+            } else {
+                0xff
+            }
+        };
+        let empty: &[u8] = &[];
+
+        dbg_log_key(0x21, &buyer_key);
+        dbg_log_key(0x25, &actor_key);
+        anchor_lang::solana_program::log::sol_log_64(0x29, stored_bump as u64, 0, 0, 0);
+
+        let (find_addr, find_bump) = Pubkey::find_program_address(&[b"actor", buyer_key.as_ref()], program_id);
+        dbg_log_key(0x31, &find_addr);
+        anchor_lang::solana_program::log::sol_log_64(
+            0x35,
+            find_bump as u64,
+            (find_addr == actor_key) as u64,
+            0,
+            0,
+        );
+
+        match Pubkey::create_program_address(&[b"actor", buyer_key.as_ref(), &[stored_bump][..]], program_id) {
+            Ok(addr) => {
+                dbg_log_key(0x39, &addr);
+                anchor_lang::solana_program::log::sol_log_64(0x3d, (addr == actor_key) as u64, 0, 0, 0);
+            }
+            Err(_) => anchor_lang::solana_program::log::sol_log_64(0x3d, 99, 0, 0, 0),
+        }
+
+        let (actor_with_empty, _) = Pubkey::find_program_address(&[b"actor", buyer_key.as_ref(), empty], program_id);
+        anchor_lang::solana_program::log::sol_log_64(0x41, (actor_with_empty == find_addr) as u64, 0, 0, 0);
+
+        let (deal_addr, deal_bump) =
+            Pubkey::find_program_address(&[b"deal", vin_hash.as_ref(), buyer_key.as_ref()], program_id);
+        dbg_log_key(0x49, &deal_addr);
+        anchor_lang::solana_program::log::sol_log_64(0x4d, deal_bump as u64, 0, 0, 0);
+        let (deal_with_empty, _) =
+            Pubkey::find_program_address(&[b"deal", vin_hash.as_ref(), buyer_key.as_ref(), empty], program_id);
+        anchor_lang::solana_program::log::sol_log_64(0x51, (deal_with_empty == deal_addr) as u64, 0, 0, 0);
+        msg!("debug_seeds done");
+        Ok(())
+    }
+
     /// Opens a deal: two vaults are created separately in one transaction.
     pub fn open_deal(
         ctx: Context<OpenDeal>,
@@ -848,46 +900,31 @@ pub struct SettleBond<'info> {
 }
 
 
-/// TEMPORARY DIAGNOSTIC. Logs the 8-byte chunks of `bytes` (under `tag`,
-/// `tag+1`, ...) and returns the same bytes, so a real seed can be wrapped
-/// without changing what is hashed. The log line carries the slice length in
-/// the third slot. Remove with the diagnostic in `OpenDeal`.
-#[inline(never)]
-fn dbg_seed(tag: u64, bytes: &[u8]) -> &[u8] {
-    let len = bytes.len() as u64;
-    let mut i = 0usize;
-    while i < bytes.len() && i < 32 {
-        let end = if i + 8 < bytes.len() { i + 8 } else { bytes.len() };
+/// TEMPORARY DIAGNOSTIC. Logs a pubkey as four little-endian u64 chunks under
+/// `tag..tag+3`, so the value survives the log format. Used only by the
+/// `debug_seeds` instruction. Remove it with that instruction.
+fn dbg_log_key(tag: u64, key: &Pubkey) {
+    let bytes = key.to_bytes();
+    for i in 0..4 {
         let mut chunk = [0u8; 8];
-        chunk[..end - i].copy_from_slice(&bytes[i..end]);
-        anchor_lang::solana_program::log::sol_log_64(tag + (i as u64) / 8, u64::from_le_bytes(chunk), len, 0, 0);
-        i += 8;
+        chunk.copy_from_slice(&bytes[i * 8..i * 8 + 8]);
+        anchor_lang::solana_program::log::sol_log_64(tag + i as u64, u64::from_le_bytes(chunk), 0, 0, 0);
     }
-    bytes
 }
 
-/// TEMPORARY DIAGNOSTIC. Like `dbg_seed`, but returns an EMPTY slice, so a
-/// value can be logged from inside a seeds list without becoming a seed:
-/// hashing an empty slice is a no-op in the PDA hasher. Remove with the rest.
-#[inline(never)]
-fn dbg_void(tag: u64, bytes: &[u8]) -> &'static [u8] {
-    let len = bytes.len() as u64;
-    let mut i = 0usize;
-    while i < bytes.len() && i < 32 {
-        let end = if i + 8 < bytes.len() { i + 8 } else { bytes.len() };
-        let mut chunk = [0u8; 8];
-        chunk[..end - i].copy_from_slice(&bytes[i..end]);
-        anchor_lang::solana_program::log::sol_log_64(tag + (i as u64) / 8, u64::from_le_bytes(chunk), len, 0, 0);
-        i += 8;
-    }
-    &[]
-}
-
-/// TEMPORARY DIAGNOSTIC. Logs a single u64 without contributing a seed.
-#[inline(never)]
-fn dbg_void_u64(tag: u64, value: u64) -> &'static [u8] {
-    anchor_lang::solana_program::log::sol_log_64(tag, value, 0, 0, 0);
-    &[]
+/// TEMPORARY DIAGNOSTIC. Answers, from inside the program, the questions the
+/// test suite kept guessing at: what the program's own `find_program_address`
+/// and `create_program_address` return for the actor and deal seeds, whether
+/// the stored bump reproduces the passed actor account, and whether adding an
+/// empty seed changes a derived address. It takes the accounts as plain data
+/// and derives nothing for itself, so it cannot disturb `open_deal`. Remove it
+/// with `dbg_log_key`.
+#[derive(Accounts)]
+pub struct DebugSeeds<'info> {
+    /// CHECK: diagnostic only; the wallet the actor seeds should be built from.
+    pub buyer: UncheckedAccount<'info>,
+    /// CHECK: diagnostic only; the actor account the seeds check compares with.
+    pub buyer_actor: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -897,23 +934,11 @@ pub struct OpenDeal<'info> {
     pub buyer: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, Config>,
-    #[account(mut, seeds = [
-        dbg_seed(0xa0, b"actor"),
-        dbg_seed(0xa8, buyer.key().as_ref()),
-        dbg_void(0x60, __program_id.as_ref()),
-    ], bump)]
+    #[account(mut, seeds = [b"actor", buyer.key().as_ref()], bump)]
     pub buyer_actor: Account<'info, ActorAccount>,
-    #[account(mut, seeds = [
-        dbg_seed(0xb0, b"actor"),
-        dbg_seed(0xb8, seller.key().as_ref()),
-        dbg_void(0x58, __program_id.as_ref()),
-    ], bump = seller_actor.bump)]
+    #[account(mut, seeds = [b"actor", seller.key().as_ref()], bump)]
     pub seller_actor: Account<'info, ActorAccount>,
-    #[account(seeds = [
-        dbg_seed(0xc0, b"actor"),
-        dbg_seed(0xc8, inspector.key().as_ref()),
-        dbg_void(0x50, __program_id.as_ref()),
-    ], bump = inspector_actor.bump)]
+    #[account(seeds = [b"actor", inspector.key().as_ref()], bump)]
     pub inspector_actor: Account<'info, ActorAccount>,
     /// CHECK: seller wallet; identity is checked via seller_actor.
     pub seller: UncheckedAccount<'info>,
@@ -923,15 +948,7 @@ pub struct OpenDeal<'info> {
         init,
         payer = buyer,
         space = DealAccount::LEN,
-        seeds = [
-            dbg_seed(0xe0, b"deal"),
-            dbg_seed(0xe8, vin_hash.as_ref()),
-            dbg_seed(0xf0, buyer.key().as_ref()),
-            dbg_void(0x80, __program_id.as_ref()),
-            dbg_void_u64(0x88, buyer_actor.bump as u64),
-            dbg_void_u64(0x90, seller_actor.bump as u64),
-            dbg_void_u64(0x98, inspector_actor.bump as u64),
-        ],
+        seeds = [b"deal", vin_hash.as_ref(), buyer.key().as_ref()],
         bump
     )]
     pub deal: Account<'info, DealAccount>,

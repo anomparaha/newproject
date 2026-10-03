@@ -147,6 +147,28 @@ describe('vin-anchor', () => {
         .rpc();
     }
 
+    // TEMPORARY DIAGNOSTIC. Calls the program's own diagnostic entry point,
+    // which logs what it derives from the actor and deal seeds and whether an
+    // empty seed changes that result. It runs before any `openDeal` call and
+    // touches no state. Remove it with `debug_seeds` in the program.
+    try {
+      const dbgTx = await program.methods
+        .debugSeeds(vinHash)
+        .accounts({ buyer: buyer.publicKey, buyerActor: actorPda(buyer.publicKey) })
+        .transaction();
+      dbgTx.feePayer = admin.publicKey;
+      dbgTx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+      const dbgSim = await provider.connection.simulateTransaction(dbgTx);
+      const dbgLogs = dbgSim.value.logs || [];
+      console.log(`debug_seeds logs (${dbgLogs.length}):`);
+      dbgLogs.forEach((line) => console.log(`  | ${line}`));
+      console.log(
+        `client-side: find([actor,buyer]) ${actorPda(buyer.publicKey).toBase58()} | find([deal,vin,buyer]) ${dealPda(buyer.publicKey).toBase58()}`,
+      );
+    } catch (e) {
+      console.log(`debug_seeds could not be built or simulated: ${String(e)}`);
+    }
+
     // TEMPORARY DIAGNOSTIC. `openDeal` is the only instruction whose seeds are
     // read from other accounts (`buyer.key()`, `seller.key()`,
     // `inspector.key()`), and it is the only one whose seeds check fails, so the
