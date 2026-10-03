@@ -1,0 +1,39 @@
+$kind: http-request
+name: '8. Control - Upload Report (60000 km) expect anomaly'
+order: 800
+method: POST
+url: '{{baseUrl}}/api/deals/:id/reports'
+pathVariables:
+  - key: id
+    value: '{{regCtrlDealId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{regInspectorId}}'
+body:
+  type: json
+  content: |-
+    {
+      "inspectorId": "{{regInspectorId}}",
+      "odometerKm": 60000,
+      "inspectedAt": "2026-10-02T10:00:00.000Z",
+      "reportHash": "{{sha256}}",
+      "dashboardPhotoHash": "{{sha256}}",
+      "conditionSummary": "Control case: a single listing recorded at 90,000 km, now read at 60,000 km. The drop below the record must be flagged as an anomaly.",
+      "standardVersion": "vin-report-v1",
+      "checklist": {
+        "vin_matches_unit": true,
+        "dashboard_photo": true,
+        "odometer_documented": true,
+        "main_condition": true,
+        "date_and_location": true
+      }
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('control report 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json();
+      pm.test('odometer anomaly flagged (control)', () => pm.expect(b.anomaly && b.anomaly.flagged).to.eql(true));

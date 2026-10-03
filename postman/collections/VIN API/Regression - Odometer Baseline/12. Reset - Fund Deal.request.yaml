@@ -1,0 +1,17 @@
+$kind: http-request
+name: '12. Reset - Fund Deal'
+order: 1200
+method: POST
+url: '{{baseUrl}}/api/deals/:id/fund'
+pathVariables:
+  - key: id
+    value: '{{regRstDealId}}'
+headers:
+  - key: x-actor-id
+    value: '{{regBuyerId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('fund reset 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      pm.test('state inspecting', () => pm.expect(pm.response.json().deal.state).to.eql('inspecting'));

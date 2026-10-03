@@ -1,0 +1,33 @@
+$kind: http-request
+name: '6. Control - Commit Deal'
+order: 600
+method: POST
+url: '{{baseUrl}}/api/listings/:id/deals'
+pathVariables:
+  - key: id
+    value: '{{regCtrlListingId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{regBuyerId}}'
+body:
+  type: json
+  content: |-
+    {
+      "buyerId": "{{regBuyerId}}",
+      "inspectorId": "{{regInspectorId}}",
+      "shippingPaidBy": "buyer",
+      "shippingAmount": "100",
+      "inspectionFeeAmount": "100",
+      "escrowCurrency": "USDC",
+      "inspectionDeadlineHours": 48,
+      "handoverTerms": "Handover at the location; confirmation by both parties"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('commit control deal 2xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.within(200,299));
+      const b = pm.response.json(); const d = b.deal || b;
+      pm.collectionVariables.set('regCtrlDealId', d.id);

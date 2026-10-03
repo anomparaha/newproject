@@ -1,0 +1,3 @@
+$kind: collection
+name: Regression - Odometer Baseline
+description: 'Regression guard for the odometer anti-fraud rule. Both cases must flag an anomaly on a 60,000 km report: (1) Control = a single listing at 90,000 km; (2) Reset = the same VIN relisted at 50,000 km after a 90,000 km record (the relist is accepted with a warning, not rejected). The anomaly baseline must stay the HIGHEST reading (90,000 km), so a 60,000 km report is still flagged even after the low relist. If the old baseline bug returned (using the latest 50,000 km reading), the Reset case would NOT flag and this folder would fail.'
