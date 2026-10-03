@@ -329,7 +329,7 @@ jobs:
       # for `OpenDeal::try_accounts`, which is where the `deal` seeds check
       # lives: the seeds it derives from, the check it runs, and the values it
       # puts in the error. Remove this step with the rest of the diagnostic.
-      - name: TEMPORARY DIAGNOSTIC: expand the Accounts macro for OpenDeal
+      - name: "TEMPORARY DIAGNOSTIC: expand the Accounts macro for OpenDeal"
         if: always()
         run: |
           cd programs/vin-anchor
