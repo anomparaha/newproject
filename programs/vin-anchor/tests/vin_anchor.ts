@@ -103,6 +103,21 @@ describe('vin-anchor', () => {
       const [derived] = PublicKey.findProgramAddressSync([Buffer.from('actor'), wallet.toBuffer()], program.programId);
       console.log(`actor PDA ${label}: from seeds ${derived.toBase58()} | test expects ${actorPda(wallet).toBase58()} | match ${derived.equals(actorPda(wallet))}`);
     }
+    console.log(`program id the client uses: ${program.programId.toBase58()}`);
+    for (const [label, wallet] of [['buyer', buyer.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
+      const addr = actorPda(wallet);
+      const [canonicalAddr, canonicalBump] = PublicKey.findProgramAddressSync(
+        [Buffer.from('actor'), wallet.toBuffer()],
+        program.programId,
+      );
+      const info = await provider.connection.getAccountInfo(addr);
+      // ActorAccount: 8 discriminator, then wallet 32, role 1, attestation 32,
+      // revoked 1, bond_locked 8, bump 1 - so the bump is byte 82.
+      const storedBump = info && info.data.length > 82 ? info.data[82] : 'no account';
+      console.log(
+        `actor ${label}: addr ${addr.toBase58()} = canonical ${canonicalAddr.toBase58()} (${addr.equals(canonicalAddr)}) | owner ${info ? info.owner.toBase58() : 'MISSING'} | len ${info ? info.data.length : 0} | storedBump ${storedBump} vs canonicalBump ${canonicalBump}`,
+      );
+    }
     try {
       const builtIx = await program.methods
         .openDeal(vinHash, new anchor.BN('0'), new anchor.BN('0'))
