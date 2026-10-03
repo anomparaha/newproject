@@ -237,6 +237,27 @@ jobs:
           done | head -8
           exit 0
 
+      # One line per accounts struct, so the question "which derive produced no
+      # impl" is answered by a table instead of by reading a wall of errors.
+      - name: Which derives produced an Accounts impl
+        if: always()
+        run: |
+          log=/tmp/anchor-build.log
+          if [ ! -s "$log" ]; then echo "no build log"; exit 0; fi
+          echo "--- build log: $(wc -l < "$log") lines ---"
+          for s in AdminOnly InitializeConfig RegisterActor LockBond SettleBond \
+                   OpenDeal FundLeg FreezeDeal ReleaseLeg RefundLeg ResolveDispute \
+                   SlashBond RecordNote ProbeInitMint ProbeInitIfNeededMint ProbeBondVault; do
+            if grep -q "the trait bound \`$s<'_>: anchor_lang::Accounts" "$log"; then
+              echo "MISSING  $s"
+            else
+              echo "ok       $s"
+            fi
+          done
+          echo "--- anything about the feature, the macro, or a panic ---"
+          grep -n -i "init_if_needed\|init-if-needed\|proc macro\|panicked\|requires that anchor-lang" "$log" | head -20
+          exit 0
+
       - name: Collect the build errors for a human reader
         if: failure()
         run: |

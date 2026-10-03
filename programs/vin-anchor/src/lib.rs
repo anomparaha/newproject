@@ -1185,3 +1185,73 @@ pub enum VinError {
     #[msg("Fund split is not exact: the remainder would be stranded in the vault")]
     InexactSettlement,
 }
+
+// ---------------------------------------------------------------------------
+// TEMPORARY DIAGNOSTIC PROBES. They exist to find out which account attribute
+// makes `#[derive(Accounts)]` produce no impl. Remove them once LockBond
+// compiles; they are not part of the program.
+// ---------------------------------------------------------------------------
+#[derive(Accounts)]
+pub struct ProbeInitMint<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(init, payer = payer, mint::decimals = 6, mint::authority = payer)]
+    pub mint: Account<'info, Mint>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct ProbeInitIfNeededMint<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(init_if_needed, payer = payer, mint::decimals = 6, mint::authority = payer)]
+    pub mint: Account<'info, Mint>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct ProbeBondVault<'info> {
+    #[account(mut)]
+    pub bonder: Signer<'info>,
+    #[account(seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, Config>,
+    #[account(mut, seeds = [b"actor", bonder.key().as_ref()], bump = actor.bump)]
+    pub actor: Account<'info, ActorAccount>,
+    #[account(mut)]
+    pub bonder_token: Account<'info, TokenAccount>,
+    #[account(
+        init_if_needed,
+        payer = bonder,
+        token::mint = bonder_token.mint,
+        token::authority = actor,
+        seeds = [b"bond_vault", actor.key().as_ref()],
+        bump
+    )]
+    pub bond_vault: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+/// Referencing each probe through Context is what asks the compiler whether
+/// the derive produced an Accounts impl.
+#[allow(dead_code)]
+mod probes {
+    use super::*;
+
+    pub fn probe_init_mint(_ctx: Context<ProbeInitMint>) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn probe_init_if_needed_mint(_ctx: Context<ProbeInitIfNeededMint>) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn probe_bond_vault(_ctx: Context<ProbeBondVault>) -> Result<()> {
+        Ok(())
+    }
+}
