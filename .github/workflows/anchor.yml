@@ -8,6 +8,12 @@ name: Anchor (Solana program)
 # Solana CLI; a much newer CLI tends to fail inside `anchor build` with a
 # platform-tools mismatch that is hard to read. If the pinned Solana release is
 # ever unavailable, the step falls back to stable and says so in the log.
+#
+# The build and test steps copy their output to a file and, when they fail,
+# report the interesting lines as check annotations and as a job summary. The
+# raw log of a workflow run is served from a separate host that some networks
+# cannot reach, while the Checks API is reachable almost everywhere - so the
+# failure has to be readable from the API, not only from the web page.
 
 on:
   workflow_dispatch:
@@ -55,6 +61,18 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
 
+      - name: Create the throwaway test wallet
+        run: |
+          set -euo pipefail
+          # `anchor test` reads the provider wallet from Anchor.toml and stops
+          # when the keypair is missing. A fresh runner has none, and the
+          # keypair is not worth caching: the local validator funds whatever
+          # address this generates.
+          mkdir -p "$HOME/.config/solana"
+          solana-keygen new --no-bip39-passphrase --force \
+            -o "$HOME/.config/solana/id.json" < /dev/null
+          solana address
+
       - name: Install the Anchor CLI
         run: |
           set -euo pipefail
@@ -64,7 +82,15 @@ jobs:
           # toolchain, so `cargo install ... avm --locked` aborted in ~4s before
           # anchor-cli was ever built. The tagged release locks against a Rust
           # version compatible with the one pinned above.
-          cargo install --git https://github.com/coral-xyz/anchor --tag "v${ANCHOR_VERSION}" anchor-cli --locked --force
+          #
+          # The binary lands in ~/.cargo/bin, which the cache restores, so the
+          # rebuild only happens on a cold cache.
+          if command -v anchor >/dev/null 2>&1; then
+            echo "Restored the Anchor CLI from the cache; skipping the rebuild."
+          else
+            cargo install --git https://github.com/coral-xyz/anchor \
+              --tag "v${ANCHOR_VERSION}" anchor-cli --locked --force
+          fi
           anchor --version
 
       - uses: actions/setup-node@v4
@@ -80,12 +106,66 @@ jobs:
         run: npm ci
 
       - name: Build the program
-        run: anchor build
+        run: |
+          set -o pipefail
+          anchor build 2>&1 | tee /tmp/anchor-build.log
+
+      - name: Report the build errors
+        if: failure()
+        run: |
+          log=/tmp/anchor-build.log
+          [ -s "$log" ] || exit 0
+
+          {
+            echo '### The program did not compile'
+            echo
+            echo '```'
+            grep -E '^(error|warning: unused)' -A 3 "$log" | head -150 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Annotations are how this failure reaches a reader who can reach the
+          # Checks API but not the raw log host. Escape '%' the way the workflow
+          # command parser expects.
+          grep -E '^(error|error\[)' -A 2 "$log" | head -120 | while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::${line//%/%25}"
+          done
+          exit 0
 
       - name: Run the Anchor tests
-        run: anchor test --skip-build
+        run: |
+          set -o pipefail
+          anchor test --skip-build 2>&1 | tee /tmp/anchor-test.log
+
+      - name: Report the test failures
+        if: failure()
+        run: |
+          log=/tmp/anchor-test.log
+          [ -s "$log" ] || exit 0
+
+          {
+            echo '### The tests did not pass'
+            echo
+            echo '```'
+            tail -150 "$log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          tail -60 "$log" | while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::${line//%/%25}"
+          done
+          exit 0
+
+      - name: Keep the raw logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-logs
+          path: /tmp/anchor-*.log
+          if-no-files-found: ignore
 
       - name: Save the IDL as an artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: vin-anchor-idl
