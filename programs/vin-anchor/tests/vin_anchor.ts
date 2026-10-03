@@ -108,6 +108,16 @@ describe('vin-anchor', () => {
         .openDeal(vinHash, new anchor.BN('0'), new anchor.BN('0'))
         .accounts({
           buyer: buyer.publicKey,
+          // The client's account resolver derives every PDA the instruction
+          // needs from the IDL. For these three it fails silently - the error is
+          // swallowed and the account is left unset - and an unset account is
+          // filled with the default pubkey, which the program then rejects as a
+          // seeded account whose seeds do not match. They are the same PDAs the
+          // resolver derives from the same seeds, so they are passed in
+          // directly.
+          buyerActor: actorPda(buyer.publicKey),
+          sellerActor: actorPda(seller.publicKey),
+          inspectorActor: actorPda(inspector.publicKey),
           seller: seller.publicKey,
           inspector: inspector.publicKey,
           deal,
@@ -166,6 +176,16 @@ describe('vin-anchor', () => {
         .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
         .accounts({
           buyer: buyer.publicKey,
+          // The client's account resolver derives every PDA the instruction
+          // needs from the IDL. For these three it fails silently - the error is
+          // swallowed and the account is left unset - and an unset account is
+          // filled with the default pubkey, which the program then rejects as a
+          // seeded account whose seeds do not match. They are the same PDAs the
+          // resolver derives from the same seeds, so they are passed in
+          // directly.
+          buyerActor: actorPda(buyer.publicKey),
+          sellerActor: actorPda(seller.publicKey),
+          inspectorActor: actorPda(inspector.publicKey),
           seller: seller.publicKey,
           inspector: inspector.publicKey,
           deal,
@@ -426,6 +446,9 @@ describe('vin-anchor', () => {
       .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
       .accounts({
         buyer: buyer2.publicKey,
+        buyerActor: actorPda(buyer2.publicKey),
+        sellerActor: actorPda(seller.publicKey),
+        inspectorActor: actorPda(inspector.publicKey),
         seller: seller.publicKey,
         inspector: inspector.publicKey,
         deal: deal2,
