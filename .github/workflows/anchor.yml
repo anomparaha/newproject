@@ -376,6 +376,9 @@ jobs:
         run: |
           log=.anchor/test-ledger/test-ledger-log.txt
           if [ ! -s "$log" ]; then
+            # A build failure means the tests never started; only say the log is
+            # missing when the test step actually ran.
+            [ -f /tmp/anchor-test.log ] || exit 0
             echo "::error::no validator log at $log - the validator may have exited before writing one"
             ls -la .anchor/test-ledger 2>/dev/null | head -10
             exit 0

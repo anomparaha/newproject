@@ -9,3 +9,12 @@
 [workspace]
 members = ["programs/*"]
 resolver = "2"
+
+# Anchor refuses to build a program whose release profile can wrap on integer
+# overflow, and it looks for this setting in the manifest that sits next to
+# Anchor.toml. It was never enforced here because that manifest did not exist.
+# Overflow checks matter more than usual in this program: the amounts it moves
+# are money, and a release build that quietly wraps is worse than one that
+# panics.
+[profile.release]
+overflow-checks = true
