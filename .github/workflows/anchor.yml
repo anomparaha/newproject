@@ -335,18 +335,12 @@ jobs:
           cd programs/vin-anchor
           RUSTC_BOOTSTRAP=1 cargo rustc --profile=check --lib -- -Zunpretty=expanded > /tmp/expanded.rs 2> /tmp/expanded-err.txt || true
           echo "expanded lines: $(wc -l < /tmp/expanded.rs)"
-          echo "--- bindings of deal ---"
-          grep -n "let deal" /tmp/expanded.rs | head -12
-          echo "--- deal.key() sites ---"
-          grep -n "deal\.key()" /tmp/expanded.rs | head -20
-          echo "--- ConstraintSeeds sites ---"
-          grep -n "ConstraintSeeds" /tmp/expanded.rs | head -30
-          echo "--- find_program_address sites ---"
-          grep -n "find_program_address" /tmp/expanded.rs | head -30
-          echo "--- around the deal seed list ---"
-          n=$(grep -n "dbg_find" /tmp/expanded.rs | head -1 | cut -d: -f1)
-          echo "anchor line: $n"
-          sed -n "$((n>150 ? n-150 : 1)),$((n+50))p" /tmp/expanded.rs | sed -e 's/^/EXPD: /'
+          echo "--- the deal init group ---"
+          sed -n '6730,6900p' /tmp/expanded.rs | sed -e 's/^/EXPDEAL: /'
+          echo "--- the buyer/deal comparison in context ---"
+          grep -n "buyer.key() == deal.key()" /tmp/expanded.rs | head -3
+          n=$(grep -n "buyer.key() == deal.key()" /tmp/expanded.rs | head -1 | cut -d: -f1)
+          sed -n "$((n>25 ? n-25 : 1)),$((n+15))p" /tmp/expanded.rs | sed -e 's/^/EXPCMP: /'
           exit 0
 
       - name: Run the Anchor tests
