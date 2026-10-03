@@ -808,10 +808,16 @@ pub struct LockBond<'info> {
     pub actor: Account<'info, ActorAccount>,
     #[account(mut)]
     pub bonder_token: Account<'info, TokenAccount>,
+    /// Anchor takes the mint of an initialised token account from an account
+    /// field, not from a public key expression, so the bond currency is named
+    /// here. The address constraint keeps the original intent: the bond must be
+    /// denominated in whatever the workshop's token account holds.
+    #[account(address = bonder_token.mint)]
+    pub usdc_mint: Account<'info, Mint>,
     #[account(
         init_if_needed,
         payer = bonder,
-        token::mint = bonder_token.mint,
+        token::mint = usdc_mint,
         token::authority = actor,
         seeds = [b"bond_vault", actor.key().as_ref()],
         bump
@@ -1223,10 +1229,16 @@ pub struct ProbeBondVault<'info> {
     pub actor: Account<'info, ActorAccount>,
     #[account(mut)]
     pub bonder_token: Account<'info, TokenAccount>,
+    /// Anchor takes the mint of an initialised token account from an account
+    /// field, not from a public key expression, so the bond currency is named
+    /// here. The address constraint keeps the original intent: the bond must be
+    /// denominated in whatever the workshop's token account holds.
+    #[account(address = bonder_token.mint)]
+    pub usdc_mint: Account<'info, Mint>,
     #[account(
         init_if_needed,
         payer = bonder,
-        token::mint = bonder_token.mint,
+        token::mint = usdc_mint,
         token::authority = actor,
         seeds = [b"bond_vault", actor.key().as_ref()],
         bump

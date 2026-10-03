@@ -248,14 +248,15 @@ jobs:
           for s in AdminOnly InitializeConfig RegisterActor LockBond SettleBond \
                    OpenDeal FundLeg FreezeDeal ReleaseLeg RefundLeg ResolveDispute \
                    SlashBond RecordNote ProbeInitMint ProbeInitIfNeededMint ProbeBondVault; do
-            if grep -q "the trait bound \`$s<'_>: anchor_lang::Accounts" "$log"; then
+            if grep -qE "the trait bound \`$s<'_>: (anchor_lang::Accounts|Bumps)" "$log"; then
               echo "MISSING  $s"
             else
               echo "ok       $s"
             fi
           done
           echo "--- anything about the feature, the macro, or a panic ---"
-          grep -n -i "init_if_needed\|init-if-needed\|proc macro\|panicked\|requires that anchor-lang" "$log" | head -20
+          echo "mint-constraint errors: $(grep -c 'the mint constraint has to be an account field' "$log")"
+          grep -n -i "init_if_needed\|init-if-needed\|proc macro\|panicked\|requires that anchor-lang\|the mint constraint" "$log" | head -20
           exit 0
 
       - name: Collect the build errors for a human reader
