@@ -66,6 +66,10 @@ pub mod vin_anchor {
         config.fee_bps_inspection = fee_bps_inspection;
         config.paused = false;
         config.bump = ctx.bumps.config;
+        // TEMPORARY DIAGNOSTIC: a marker in the binary, so the test can tell
+        // which build the validator is actually running. Remove it with the
+        // diagnostic block in the tests.
+        msg!("vin-anchor build marker 2026-10-03T17:00Z");
         Ok(())
     }
 
