@@ -1,0 +1,14 @@
+$kind: http-request
+name: '6. Corridor'
+order: 600
+method: GET
+url: '{{baseUrl}}/api/corridors'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('corridors 200', () => pm.response.to.have.status(200));
+      const corridors = pm.response.json().corridors || [];
+      const corridor = corridors[0] || {};
+      pm.collectionVariables.set('corridorId', corridor.id || '');
+      pm.test('a corridor was captured', () => pm.expect(corridor.id).to.be.a('string').and.not.empty);

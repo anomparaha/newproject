@@ -172,6 +172,8 @@ Work breakdown, gates, and the mainnet checklist: **`docs/ROADMAP.md`**.
   implementation**: 20 differences, two critical logic bugs, an area-by-area assessment, and the
   phased adoption order.
 - `docs/DEPLOYMENT.md` — MVP deployment, real-money readiness, and how to turn on the on-chain path.
+- `docs/FASE1_ANCHOR.md` — **the Phase 1 spec**: explicit `DealState`, the VIN registry, the
+  `maxOdometer` gate, and the test cases that must go red before they go green.
 - `docs/LEGAL.md` — legal boundaries, compliance, and what must **not** be published.
 
 ## 9. Repo hygiene

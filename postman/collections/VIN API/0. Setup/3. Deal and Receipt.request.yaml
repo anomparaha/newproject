@@ -1,0 +1,23 @@
+$kind: http-request
+name: '3. Deal and Receipt'
+order: 300
+method: GET
+url: '{{baseUrl}}/api/notes'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('notes 200', () => pm.response.to.have.status(200));
+      const notes = pm.response.json().notes || [];
+      const note = notes[0] || {};
+
+      // A receipt only exists for a completed deal, so its dealId is the richest
+      // deal to point Get Deal / Deal Escrows at.
+      pm.collectionVariables.set('noteId', note.id || '');
+      pm.collectionVariables.set('dealId', note.dealId || '');
+      if (note.vin) pm.collectionVariables.set('vin', note.vin);
+
+      pm.test('a completed deal and its receipt were captured', () => {
+        pm.expect(note.id).to.be.a('string').and.not.empty;
+        pm.expect(note.dealId).to.be.a('string').and.not.empty;
+      });

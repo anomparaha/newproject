@@ -1,0 +1,35 @@
+$kind: http-request
+name: '1. Actors'
+order: 100
+method: GET
+url: '{{baseUrl}}/api/demo/actors'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('demo actors 200', () => pm.response.to.have.status(200));
+      const actors = pm.response.json().actors || [];
+      const byRole = (r) => (actors.find((a) => a.role === r) || {}).id || '';
+      const seller = byRole('seller');
+      const buyer = byRole('buyer');
+      const curator = byRole('curator');
+      const arbiter = byRole('arbiter');
+      // Prefer a workshop that is NOT affiliated with the seller. The demo seed
+      // marks "Sahabat Motor" as affiliated, so skip any such name.
+      const workshops = actors.filter((a) => a.role === 'inspector');
+      const workshop = (workshops.find((a) => !/affiliat|sahabat/i.test(a.displayName || '')) || workshops[0] || {}).id || '';
+
+      pm.collectionVariables.set('actorId', seller);
+      pm.collectionVariables.set('sellerId', seller);
+      pm.collectionVariables.set('buyerId', buyer);
+      pm.collectionVariables.set('inspectorId', workshop);
+      pm.collectionVariables.set('curatorId', curator);
+      pm.collectionVariables.set('arbiterId', arbiter);
+
+      pm.test('all demo roles captured', () => {
+        pm.expect(seller).to.be.a('string').and.not.empty;
+        pm.expect(buyer).to.be.a('string').and.not.empty;
+        pm.expect(workshop).to.be.a('string').and.not.empty;
+        pm.expect(curator).to.be.a('string').and.not.empty;
+        pm.expect(arbiter).to.be.a('string').and.not.empty;
+      });

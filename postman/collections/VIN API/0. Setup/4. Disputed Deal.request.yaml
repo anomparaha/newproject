@@ -1,0 +1,14 @@
+$kind: http-request
+name: '4. Disputed Deal'
+order: 400
+method: GET
+url: '{{baseUrl}}/api/deals?state=cancelled'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('deals 200', () => pm.response.to.have.status(200));
+      const deals = pm.response.json().deals || [];
+      const cancelled = deals[0] || {};
+      pm.collectionVariables.set('disputeDealId', cancelled.id || '');
+      pm.test('a cancelled deal was captured', () => pm.expect(cancelled.id).to.be.a('string').and.not.empty);

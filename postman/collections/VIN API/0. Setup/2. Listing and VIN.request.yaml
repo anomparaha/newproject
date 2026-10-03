@@ -1,0 +1,21 @@
+$kind: http-request
+name: '2. Listing and VIN'
+order: 200
+method: GET
+url: '{{baseUrl}}/api/listings'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('listings 200', () => pm.response.to.have.status(200));
+      const listings = pm.response.json().listings || [];
+      // Prefer a listing that is still open for business; fall back to the newest.
+      const listing = listings.find((l) => l.status === 'listed') || listings[0] || {};
+
+      pm.collectionVariables.set('listingId', listing.id || '');
+      pm.collectionVariables.set('vin', listing.vin || '');
+
+      pm.test('a listing and its VIN were captured', () => {
+        pm.expect(listing.id).to.be.a('string').and.not.empty;
+        pm.expect(listing.vin).to.be.a('string').and.not.empty;
+      });

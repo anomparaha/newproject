@@ -1,0 +1,20 @@
+$kind: http-request
+name: '5. Dispute and Report'
+order: 500
+method: GET
+url: '{{baseUrl}}/api/deals/:id'
+pathVariables:
+  - key: id
+    value: '{{disputeDealId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('deal detail 200 (run "4. Disputed Deal" first)', () => pm.response.to.have.status(200));
+      const b = pm.response.json();
+      pm.collectionVariables.set('disputeId', (b.dispute && b.dispute.id) || '');
+      pm.collectionVariables.set('reportId', (b.reports && b.reports[0] && b.reports[0].id) || '');
+      pm.test('the resolved dispute and its report were captured', () => {
+        pm.expect((b.dispute && b.dispute.id) || '').to.be.a('string').and.not.empty;
+        pm.expect((b.reports && b.reports[0] && b.reports[0].id) || '').to.be.a('string').and.not.empty;
+      });

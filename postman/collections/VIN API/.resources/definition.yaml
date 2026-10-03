@@ -1,5 +1,5 @@
 $kind: collection
-description: HTTP collection for the VIN vehicle-escrow API (services/api, Hono). All routes are mounted under /api. Set {{baseUrl}} to your running API (http://localhost:8080 locally, or your e2b preview URL). Many write endpoints require an 'x-actor-id' header identifying the calling actor.
+description: HTTP collection for the VIN vehicle-escrow API (services/api, Hono). All routes are mounted under /api. Set {{baseUrl}} to your running API (http://localhost:8080 locally, or your e2b preview URL). Many write endpoints require an 'x-actor-id' header identifying the calling actor. Start with the '0. Setup' folder after every `npm run seed:reset`: seeding mints new actor, listing, deal, and receipt IDs, so the saved IDs go stale and the other folders return 404s until Setup refreshes them.
 variables:
   baseUrl: http://localhost:8080
   actorId: act_39d4e43b8cb94d969b6f

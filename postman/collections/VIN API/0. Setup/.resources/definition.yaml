@@ -1,0 +1,4 @@
+$kind: collection
+name: 0. Setup
+order: 100
+description: 'Refreshes every collection variable from the live API. Run this folder once after npm run seed:reset (or after switching to a different API), because seeding mints new actor, listing, deal, and receipt IDs. Without it the saved IDs go stale and the other folders return 404s.'
