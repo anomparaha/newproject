@@ -55,12 +55,16 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
 
-      - name: Install the Anchor CLI through AVM
+      - name: Install the Anchor CLI
         run: |
           set -euo pipefail
-          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
-          avm install "${ANCHOR_VERSION}"
-          avm use "${ANCHOR_VERSION}"
+          # Install anchor-cli pinned to the v0.30.1 tag directly instead of
+          # building avm from Anchor's master branch. Building avm from master
+          # pulls a Cargo.lock whose version/MSRV is newer than the pinned Rust
+          # toolchain, so `cargo install ... avm --locked` aborted in ~4s before
+          # anchor-cli was ever built. The tagged release locks against a Rust
+          # version compatible with the one pinned above.
+          cargo install --git https://github.com/coral-xyz/anchor --tag "v${ANCHOR_VERSION}" anchor-cli --locked --force
           anchor --version
 
       - uses: actions/setup-node@v4
