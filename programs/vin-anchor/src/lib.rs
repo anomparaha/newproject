@@ -847,69 +847,74 @@ pub struct SettleBond<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+
+/// TEMPORARY DIAGNOSTIC. Logs a pubkey as its four little-endian u64 chunks
+/// under a tag, so the value survives the log format untouched. Remove it with
+/// the diagnostic block in `OpenDeal`.
+fn dbg_log_u64(tag: u64, key: &Pubkey) {
+    let bytes = key.to_bytes();
+    let chunk = |i: usize| {
+        u64::from_le_bytes([
+            bytes[i],
+            bytes[i + 1],
+            bytes[i + 2],
+            bytes[i + 3],
+            bytes[i + 4],
+            bytes[i + 5],
+            bytes[i + 6],
+            bytes[i + 7],
+        ])
+    };
+    anchor_lang::solana_program::log::sol_log_64(tag, chunk(0), chunk(8), chunk(16), chunk(24));
+}
+
 #[derive(Accounts)]
 #[instruction(vin_hash: [u8; 32], vehicle_amount: u64, inspection_amount: u64)]
 pub struct OpenDeal<'info> {
-    // TEMPORARY DIAGNOSTIC. This constraint runs before the seeds checks and
-    // prints, from inside the program, what the seeds checks are about to
-    // compute: the program id the entry point received, the keys this struct
-    // bound, and the addresses derived from the same seeds the source uses. It
-    // exists to explain the addresses in the ConstraintSeeds error instead of
-    // guessing at them. Remove it with the rest of the diagnostic.
+    // TEMPORARY DIAGNOSTIC. Two things are checked here, in one run: whether
+    // the seeds checks derive what the source says they should, and whether the
+    // canonical form of the actor seeds behaves differently from the stored-bump
+    // form. `sol_log_64` is used instead of a formatted `msg!` because the
+    // formatted form crashed the program when it was tried in this position:
+    // each logged line is `tag, four little-endian u64 chunks of the key`.
+    // Remove this with the rest of the diagnostic.
     #[account(
         mut,
         constraint = {
-            msg!("DBG pid={} crate_id={}", __program_id, crate::ID);
-            msg!(
-                "DBG keys buyer={} config={} buyer_actor={} seller_actor={} inspector_actor={}",
-                buyer.key(), config.key(), buyer_actor.key(), seller_actor.key(), inspector_actor.key()
+            msg!("DBG-A start");
+            dbg_log_u64(0xd1, __program_id);
+            dbg_log_u64(0xd2, &crate::ID);
+            dbg_log_u64(0xd3, &buyer.key());
+            dbg_log_u64(0xd4, &buyer_actor.key());
+            anchor_lang::solana_program::log::sol_log_64(
+                0xd5,
+                buyer_actor.bump as u64,
+                seller_actor.bump as u64,
+                inspector_actor.bump as u64,
+                config.bump as u64,
             );
-            msg!("DBG keys seller={} inspector={} usdc_mint={}", seller.key(), inspector.key(), usdc_mint.key());
-            msg!(
-                "DBG init keys deal={} vehicle_vault={} inspection_vault={}",
-                deal.key(), vehicle_vault.key(), inspection_vault.key()
-            );
-            msg!(
-                "DBG actor bumps buyer={} seller={} inspector={} lens {} {} {}",
-                buyer_actor.bump, seller_actor.bump, inspector_actor.bump,
-                buyer_actor.to_account_info().data_len(),
-                seller_actor.to_account_info().data_len(),
-                inspector_actor.to_account_info().data_len()
-            );
-            msg!(
-                "DBG find([actor,buyer])={}",
-                Pubkey::find_program_address(&[b"actor", buyer.key().as_ref()], __program_id).0
-            );
-            match Pubkey::create_program_address(
-                &[b"actor", buyer.key().as_ref(), &[buyer_actor.bump][..]],
-                __program_id,
-            ) {
-                Ok(addr) => msg!("DBG create([actor,buyer],stored_bump)={} equal_slot={}", addr, addr == buyer_actor.key()),
-                Err(_) => msg!("DBG create([actor,buyer],stored_bump) errored"),
+            let (find_addr, find_bump) = Pubkey::find_program_address(&[b"actor", buyer.key().as_ref()], __program_id);
+            dbg_log_u64(0xd6, &find_addr);
+            anchor_lang::solana_program::log::sol_log_64(0xd7, find_bump as u64, 0, 0, 0);
+            match Pubkey::create_program_address(&[b"actor", buyer.key().as_ref(), &[buyer_actor.bump][..]], __program_id) {
+                Ok(addr) => {
+                    dbg_log_u64(0xd8, &addr);
+                    anchor_lang::solana_program::log::sol_log_64(0xd9, (addr == buyer_actor.key()) as u64, 0, 0, 0);
+                }
+                Err(_) => anchor_lang::solana_program::log::sol_log_64(0xda, 1, 0, 0, 0),
             }
-            match Pubkey::create_program_address(
-                &[b"actor", seller.key().as_ref(), &[seller_actor.bump][..]],
-                __program_id,
-            ) {
-                Ok(addr) => msg!("DBG create([actor,seller],stored_bump)={} equal_slot={}", addr, addr == seller_actor.key()),
-                Err(_) => msg!("DBG create([actor,seller],stored_bump) errored"),
-            }
-            msg!(
-                "DBG find([actor,buyer]) with crate_id={}",
-                Pubkey::find_program_address(&[b"actor", buyer.key().as_ref()], &crate::ID).0
-            );
-            msg!("DBG args vin0={} vehicle={} inspection={}", vin_hash[0], vehicle_amount, inspection_amount);
+            msg!("DBG-A end");
             true
         }
     )]
     pub buyer: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, Config>,
-    #[account(mut, seeds = [b"actor", buyer.key().as_ref()], bump = buyer_actor.bump)]
+    #[account(mut, seeds = [b"actor", buyer.key().as_ref()], bump)]
     pub buyer_actor: Account<'info, ActorAccount>,
-    #[account(mut, seeds = [b"actor", seller.key().as_ref()], bump = seller_actor.bump)]
+    #[account(mut, seeds = [b"actor", seller.key().as_ref()], bump)]
     pub seller_actor: Account<'info, ActorAccount>,
-    #[account(seeds = [b"actor", inspector.key().as_ref()], bump = inspector_actor.bump)]
+    #[account(seeds = [b"actor", inspector.key().as_ref()], bump)]
     pub inspector_actor: Account<'info, ActorAccount>,
     /// CHECK: seller wallet; identity is checked via seller_actor.
     pub seller: UncheckedAccount<'info>,
