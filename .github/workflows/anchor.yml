@@ -191,17 +191,19 @@ jobs:
             }' | head -10
           exit 0
 
-      - name: Report the rest of the build errors
+      # Everything above is a summary. This is the log itself, folded into 3900
+      # character lines so ten of them fit in a step: roughly 39 KB of log, which
+      # is more than a failing build of this program produces. The raw log host
+      # is unreachable from some networks, and a partial view of a failure has
+      # already cost several rounds of guessing.
+      - name: Dump the build log
         if: failure()
         run: |
           log=/tmp/anchor-build.log
           [ -s "$log" ] || exit 0
-          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | awk -v RS='' '/^error/ {
-              b = substr($0, 1, 4000);
-              gsub(/%/, "%25", b);
-              gsub(/\n/, "%0A", b);
-              print "::error::" b;
-            }' | tail -n +11 | head -10
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | fold -w 3900 | head -10 | while IFS= read -r chunk; do
+            echo "::error::${chunk//%/%25}"
+          done
           exit 0
 
       - name: Report the end of the build log
@@ -278,13 +280,13 @@ jobs:
             }' | head -10
           exit 0
 
-      - name: Report the end of the test log
+      - name: Dump the test log
         if: failure()
         run: |
           log=/tmp/anchor-test.log
           [ -s "$log" ] || exit 0
-          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*$' | tail -10 | while IFS= read -r line; do
-            echo "::error::${line//%/%25}"
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | fold -w 3900 | head -10 | while IFS= read -r chunk; do
+            echo "::error::${chunk//%/%25}"
           done
           exit 0
 
