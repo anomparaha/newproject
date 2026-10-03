@@ -173,6 +173,21 @@ jobs:
             --out-ts target/types/vin_anchor.ts \
             2>&1 | tee -a /tmp/anchor-build.log
 
+      # The tests deploy this exact file into the validator's genesis block. When
+      # it is not there the validator exits at startup and the failure reads as a
+      # blockhash timeout, which says nothing about the cause, so it is checked
+      # here while the build output is still the obvious suspect.
+      - name: Check the artifacts the tests use
+        run: |
+          for f in target/deploy/vin_anchor.so target/idl/vin_anchor.json target/types/vin_anchor.ts; do
+            if [ ! -s "$f" ]; then
+              echo "::error::missing build artifact: $f"
+              find . -name '*.so' -not -path './node_modules/*' 2>/dev/null | head -5
+              exit 1
+            fi
+            ls -l "$f"
+          done
+
       # GitHub keeps ten annotations per step and silently drops the rest, and
       # the useful lines of a failed build sit in different places: the command
       # and its first complaint at the top, the compiler errors in the middle,
@@ -248,14 +263,15 @@ jobs:
       - name: Diagnose the dependency graph
         if: failure()
         continue-on-error: true
-        working-directory: programs/vin-anchor
+        env:
+          MANIFEST: programs/vin-anchor/Cargo.toml
         run: |
           [ -f Cargo.lock ] || exit 0
           echo "::error::lock: $(head -1 Cargo.lock)"
           echo "::error::packages in the lock: $(grep -c '^name = ' Cargo.lock)"
-          echo "::error::packages in the normal graph: $(cargo tree -e normal --prefix none 2>/dev/null | sort -u | grep -c .)"
-          echo "::error::block-buffer entries in the normal graph: $(cargo tree -e normal --prefix none 2>/dev/null | grep -c '^block-buffer')"
-          for dep in $(cargo tree -e normal --prefix none 2>/dev/null | sed 's/ v/-/' | sort -u); do
+          echo "::error::packages in the normal graph: $(cargo tree --manifest-path "$MANIFEST" -e normal --prefix none 2>/dev/null | sort -u | grep -c .)"
+          echo "::error::block-buffer entries in the normal graph: $(cargo tree --manifest-path "$MANIFEST" -e normal --prefix none 2>/dev/null | grep -c '^block-buffer')"
+          for dep in $(cargo tree --manifest-path "$MANIFEST" -e normal --prefix none 2>/dev/null | sed 's/ v/-/' | sort -u); do
             dir=$(ls -d "$HOME"/.cargo/registry/src/*/"$dep" 2>/dev/null | head -1)
             if [ -n "$dir" ] && grep -q 'edition = "2024"' "$dir/Cargo.toml" 2>/dev/null; then
               echo "::error::needs the 2024 edition: $dep"
@@ -359,7 +375,11 @@ jobs:
         if: failure()
         run: |
           log=.anchor/test-ledger/test-ledger-log.txt
-          [ -s "$log" ] || exit 0
+          if [ ! -s "$log" ]; then
+            echo "::error::no validator log at $log - the validator may have exited before writing one"
+            ls -la .anchor/test-ledger 2>/dev/null | head -10
+            exit 0
+          fi
           cp "$log" /tmp/anchor-validator.log
           sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*$' | tail -40 | fold -w 3900 | head -10 | while IFS= read -r chunk; do
             echo "::error::${chunk//%/%25}"

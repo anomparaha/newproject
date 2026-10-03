@@ -1,0 +1,11 @@
+# The program used to own its own workspace, and that put the SBF build's
+# output in programs/vin-anchor/target/deploy. Anchor looks for the compiled
+# program at target/deploy relative to the working directory and passes that
+# path to the test validator, so the validator could not find the .so and exited
+# before its RPC came up - which surfaces as "Unable to get latest blockhash",
+# a long way from the cause. Rooting the workspace here is the layout
+# `anchor init` creates, and it is what makes the artifacts land where Anchor
+# and the tests expect them.
+[workspace]
+members = ["programs/*"]
+resolver = "2"
