@@ -325,6 +325,26 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
 
+      # TEMPORARY DIAGNOSTIC. Prints the code the `Accounts` derive generates
+      # for `OpenDeal::try_accounts`, which is where the `deal` seeds check
+      # lives: the seeds it derives from, the check it runs, and the values it
+      # puts in the error. Remove this step with the rest of the diagnostic.
+      - name: TEMPORARY DIAGNOSTIC: expand the Accounts macro for OpenDeal
+        if: always()
+        run: |
+          cd programs/vin-anchor
+          RUSTC_BOOTSTRAP=1 cargo rustc --profile=check --lib -- -Zunpretty=expanded > /tmp/expanded.rs 2> /tmp/expanded-err.txt || true
+          echo "expanded lines: $(wc -l < /tmp/expanded.rs)"
+          echo "--- expand stderr (tail) ---"
+          tail -15 /tmp/expanded-err.txt
+          echo "--- ConstraintSeeds sites ---"
+          grep -n "ConstraintSeeds" /tmp/expanded.rs | head -30
+          echo "--- OpenDeal Accounts impl ---"
+          awk '/for OpenDeal/{f=1} f{print} f && ++n>260 {exit}' /tmp/expanded.rs | sed -e 's/^/EXPAND: /' | head -260
+          echo "--- find_program_address sites ---"
+          grep -n "find_program_address" /tmp/expanded.rs | head -20
+          exit 0
+
       - name: Run the Anchor tests
         run: |
           set -o pipefail

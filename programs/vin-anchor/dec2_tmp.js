@@ -1,0 +1,21 @@
+const bs58 = require('bs58');
+const enc = (buf) => (bs58.default ? bs58.default.encode(buf) : bs58.encode(buf));
+const k = (a,b,c,d) => { const buf = Buffer.alloc(32); [a,b,c,d].forEach((x,i)=>buf.writeBigUInt64LE(BigInt(x), i*8)); return enc(buf); };
+const n = (s) => BigInt(s);
+// run e09a3c2 (this run's keys are fresh per run)
+console.log('--- admin probe (buyer slot = admin) ---');
+console.log('0xf0 buyer seed      =', k(n('0x222f436119fbbf37'), n('0x8888d312c949e2b2'), n('0x685ffd0b34eb72f5'), n('0x39dc336aac7065a4')));
+console.log('0x100 deal.key()     =', k(n('0xe2c788fe69c8bdb3'), n('0x85e41ef4b4f79ae1'), n('0x59b1a95a08f0d67a'), n('0xd9320d3e485d5d61')));
+console.log('0x108 __program_id   =', k(n('0x81c65effb25c07da'), n('0x872a690b53de1376'), n('0x0c4347da69774735'), n('0x27834a5c335481bd')));
+console.log('0x110 dbg_find       =', k(n('0xfe99516f3ad58714'), n('0x8383d18511fbccd1'), n('0xffe0f620f4dba5a0'), n('0x0f47593f73a173cc')), 'bump 0xfc');
+console.log('error Left           = ZDkNyXdKE5bmAW1VvEm6WdfFdKcs1kDg7DwaqMXsmPd');
+console.log('error Right          = 2P9HYgiHDxWCAJNHAT5EH4d7bUh2v7k83TiWVLqvDNrJ');
+console.log('--- block 2 (buyer_actor = seller actor; buyer slot = buyer) ---');
+console.log('0xf0 buyer seed      =', k(n('0x69ed43b7aa5382d2'), n('0x149e41a115ec487b'), n('0xdfd770a713e6ca5c'), n('0x6d1a29696d2143fd')));
+console.log('error Left           = ZDkNyXdKE5bmAW1VvEm6WdfFdKcs1kDgKGS1qUVPYes');
+console.log('error Right          = D6dpizrdBqWBPUfVzmY5uc5tRHcofp6QFbBc4f6uYfQL');
+console.log('--- client keys printed this run ---');
+console.log('buyer wallet         = FAjswNseNPnMAvwKLw2YzvUpR2BAjJvhsQbE5u1hBMaL');
+console.log('admin wallet         = 4kdDJuWD2JxPVuoxHsgzGAHVhnXArKTLRLKNtcutJWxQ');
+console.log('client dealPda(buyer)= D6dpizrdBqWBPUfVzmY5uc5tRHcofp6QFbBc4f6uYfQL');
+console.log('program (should be)  = Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS');
