@@ -912,6 +912,45 @@ fn dbg_log_key(tag: u64, key: &Pubkey) {
     }
 }
 
+/// TEMPORARY DIAGNOSTIC. Logs up to 32 bytes of a seed and returns the SAME
+/// slice, so a value can be logged from inside a seeds list without changing
+/// the derivation. Remove with `dbg_log_key` and `debug_seeds`.
+#[inline(never)]
+fn dbg_seed(tag: u64, bytes: &[u8]) -> &[u8] {
+    let len = bytes.len() as u64;
+    let mut i = 0usize;
+    while i < bytes.len() && i < 32 {
+        let end = if i + 8 < bytes.len() { i + 8 } else { bytes.len() };
+        let mut chunk = [0u8; 8];
+        chunk[..end - i].copy_from_slice(&bytes[i..end]);
+        anchor_lang::solana_program::log::sol_log_64(tag + (i as u64) / 8, u64::from_le_bytes(chunk), len, 0, 0);
+        i += 8;
+    }
+    bytes
+}
+
+/// TEMPORARY DIAGNOSTIC. Like `dbg_seed`, but returns an EMPTY slice, so the
+/// value is logged without becoming a seed. Remove with `dbg_log_key` and
+/// `debug_seeds`.
+#[inline(never)]
+fn dbg_void(tag: u64, bytes: &[u8]) -> &'static [u8] {
+    let _ = dbg_seed(tag, bytes);
+    &[]
+}
+
+/// TEMPORARY DIAGNOSTIC. Runs the program's own `find_program_address` on the
+/// seeds it is given, logs the derived address, and returns an empty slice so
+/// it contributes no seed. Placed in the `deal` seed list it answers, from
+/// inside the failing constraint, what that constraint derives from the exact
+/// seeds it holds. Remove with `dbg_log_key` and `debug_seeds`.
+#[inline(never)]
+fn dbg_find(tag: u64, seeds: &[&[u8]], program_id: &Pubkey) -> &'static [u8] {
+    let (addr, bump) = Pubkey::find_program_address(seeds, program_id);
+    dbg_log_key(tag, &addr);
+    anchor_lang::solana_program::log::sol_log_64(tag + 4, bump as u64, 0, 0, 0);
+    &[]
+}
+
 /// TEMPORARY DIAGNOSTIC. Answers, from inside the program, the questions the
 /// test suite kept guessing at: what the program's own `find_program_address`
 /// and `create_program_address` return for the actor and deal seeds, whether
@@ -948,7 +987,14 @@ pub struct OpenDeal<'info> {
         init,
         payer = buyer,
         space = DealAccount::LEN,
-        seeds = [b"deal", vin_hash.as_ref(), buyer.key().as_ref()],
+        seeds = [
+            dbg_seed(0xe0, b"deal"),
+            dbg_seed(0xe8, vin_hash.as_ref()),
+            dbg_seed(0xf0, buyer.key().as_ref()),
+            dbg_void(0x100, deal.key().as_ref()),
+            dbg_void(0x108, __program_id.as_ref()),
+            dbg_find(0x110, &[b"deal", vin_hash.as_ref(), buyer.key().as_ref()], __program_id),
+        ],
         bump
     )]
     pub deal: Account<'info, DealAccount>,

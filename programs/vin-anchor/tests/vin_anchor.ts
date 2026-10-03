@@ -179,9 +179,30 @@ describe('vin-anchor', () => {
     // instruction next to a passing one. Remove it once `openDeal` passes.
     const idlRaw = idl as unknown as {
       address?: string;
-      instructions: Array<{ name: string; accounts: Array<{ name: string; pda?: unknown; address?: string }> }>;
+      instructions: Array<{ name: string; args?: Array<{ name: string; type: unknown }>; accounts: Array<{ name: string; pda?: unknown; address?: string }> }>;
     };
     console.log(`program id: client ${program.programId.toBase58()} | IDL address (declare_id) ${idlRaw.address}`);
+    // TEMPORARY DIAGNOSTIC. The client encodes the instruction arguments from
+    // these declarations, in this order, so they say what the program should
+    // read back. `openDeal`'s `vin_hash` is a 32-byte array; if this list says
+    // anything else, the bytes on the wire are not the bytes the program's
+    // `#[instruction(...)]` binding expects. The encoded instruction follows:
+    // it is the exact argument blob the program deserializes.
+    for (const nm of ['open_deal', 'openDeal', 'debug_seeds', 'debugSeeds']) {
+      const entry = idlRaw.instructions.find((i) => i.name === nm);
+      if (entry) console.log(`IDL ${nm} args: ${JSON.stringify(entry.args)}`);
+    }
+    try {
+      const wire = (program as unknown as { coder: { instruction: { encode: (name: string, args: Record<string, unknown>) => Buffer } } })
+        .coder.instruction.encode('openDeal', {
+          vinHash,
+          vehicleAmount: new anchor.BN(VEHICLE_AMOUNT.toString()),
+          inspectionAmount: new anchor.BN(INSPECTION_AMOUNT.toString()),
+        });
+      console.log(`openDeal wire (${wire.length} bytes): ${Buffer.from(wire).toString('hex')}`);
+    } catch (e) {
+      console.log(`openDeal wire could not be encoded: ${String(e)}`);
+    }
     console.log(`wallets: admin ${admin.publicKey.toBase58()} | buyer ${buyer.publicKey.toBase58()} | seller ${seller.publicKey.toBase58()} | inspector ${inspector.publicKey.toBase58()}`);
     console.log(`arbiter ${arbiter.publicKey.toBase58()} | relayer ${relayer.publicKey.toBase58()} | feeTreasury ${feeTreasury.publicKey.toBase58()}`);
     console.log(`mint ${usdcMint.toBase58()} | tokens: buyer ${buyerToken.toBase58()} seller ${sellerToken.toBase58()} inspector ${inspectorToken.toBase58()} fee ${feeToken.toBase58()} | disputeFund ${disputeFund.toBase58()} | config ${configPda.toBase58()}`);
@@ -375,6 +396,41 @@ describe('vin-anchor', () => {
       const { right } = seedsAddresses(e);
       explainActorSeeds('probe (inspector in the inspector slot)', inspector.publicKey, right);
     }
+    // TEMPORARY DIAGNOSTIC. Two calls that differ only in the `vinHash`
+    // argument and, because the deal address is derived from it, the `deal`
+    // account. If the address the program derives does not move when the
+    // argument moves, the seeds the deployed program runs do not read the
+    // argument. If it moves but still misses the account the client computed,
+    // then the bytes the program reads are not the bytes the client sent - and
+    // the wire line printed above says what the client sent. Remove this with
+    // the rest of the diagnostic block.
+    const vinAlt = hash(9);
+    const dealAltProbe = pda([Buffer.from('deal'), Buffer.from(vinAlt), buyer.publicKey.toBuffer()]);
+    const probeRights: Record<string, string> = {};
+    for (const [label, vin, dealKey] of [
+      ['vin = hash(7)', vinHash, dealPda(buyer.publicKey)],
+      ['vin = hash(9)', vinAlt, dealAltProbe],
+    ] as Array<[string, number[], PublicKey]>) {
+      try {
+        await program.methods
+          .openDeal(vin, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
+          .accountsStrict({
+            ...openDealAccountsStrict(buyer.publicKey),
+            deal: dealKey,
+            vehicleVault: vaultPda(dealKey, LEG_VEHICLE),
+            inspectionVault: vaultPda(dealKey, LEG_INSPECTION),
+          })
+          .signers([buyer])
+          .rpc();
+        console.log(`probe (${label}): the call unexpectedly succeeded`);
+      } catch (e) {
+        dumpError(`probe (${label})`, e);
+        probeRights[label] = seedsAddresses(e).right || '(not printed)';
+      }
+    }
+    console.log(
+      `vin probe: client dealPda(hash(7)) ${dealPda(buyer.publicKey).toBase58()} | client dealPda(hash(9)) ${dealAltProbe.toBase58()} | program Right ${probeRights['vin = hash(7)']} vs ${probeRights['vin = hash(9)']} | Right moved with the argument: ${probeRights['vin = hash(7)'] !== probeRights['vin = hash(9)']}`,
+    );
     try {
       const ix = await program.methods
         .slashBond(new anchor.BN(BOND_AMOUNT.toString()), hash(51))
