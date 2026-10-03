@@ -10,6 +10,10 @@ name = "vin_anchor"
 
 [features]
 default = []
+# `anchor build` generates the IDL by rebuilding the crate with this feature,
+# and the tests import the TypeScript types it writes to target/types. Without
+# it the build stops before compiling anything.
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 # CPI to Metaplex Core for minting receipt NFTs. Off by default so the first
 # build depends only on anchor-lang + anchor-spl.
 metaplex-core = ["dep:mpl-core"]

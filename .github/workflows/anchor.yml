@@ -9,11 +9,12 @@ name: Anchor (Solana program)
 # platform-tools mismatch that is hard to read. If the pinned Solana release is
 # ever unavailable, the step falls back to stable and says so in the log.
 #
-# The build and test steps copy their output to a file and, when they fail,
-# report the interesting lines as check annotations and as a job summary. The
-# raw log of a workflow run is served from a separate host that some networks
-# cannot reach, while the Checks API is reachable almost everywhere - so the
-# failure has to be readable from the API, not only from the web page.
+# Reading a failure back is part of the job. The raw log of a workflow run and
+# the artifacts it uploads are served from hosts that some networks cannot
+# reach, while the Checks API is reachable almost everywhere, so the build and
+# test steps copy their output to a file and dedicated steps turn it into check
+# annotations. GitHub keeps the first ten annotations of each step and drops the
+# rest, which is why the reporting is split into a few steps instead of one.
 
 on:
   workflow_dispatch:
@@ -35,16 +36,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache Cargo and AVM
-        uses: actions/cache@v4
+      # The toolchain is expensive to build (anchor-cli alone is minutes of
+      # Rust) and the cache has to survive a failing run, otherwise every
+      # iteration pays for it again. Restore here, save near the end.
+      # restore/ rather than cache/, because the cache action saves in a post
+      # step that GitHub skips when the job fails - exactly the runs whose
+      # toolchain we want to keep.
+      - name: Restore the toolchain cache
+        id: toolchain
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.avm
+            ~/.cache/solana
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.toml') }}
+          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -59,7 +67,6 @@ jobs:
             sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
           fi
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
 
       - name: Create the throwaway test wallet
         run: |
@@ -110,26 +117,52 @@ jobs:
           set -o pipefail
           anchor build 2>&1 | tee /tmp/anchor-build.log
 
-      - name: Report the build errors
+      # GitHub keeps ten annotations per step and silently drops the rest, and
+      # the useful lines of a failed build sit in different places: the command
+      # and its first complaint at the top, the compiler errors in the middle,
+      # the summary at the bottom. Three steps cover all of them.
+      - name: Report the start of the build log
         if: failure()
         run: |
           log=/tmp/anchor-build.log
           [ -s "$log" ] || exit 0
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*$' | head -10 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+          exit 0
 
+      - name: Report the errors in the build log
+        if: failure()
+        run: |
+          log=/tmp/anchor-build.log
+          [ -s "$log" ] || exit 0
+          grep -i -E 'error|failed' -A 2 "$log" | sed -e 's/\x1b\[[0-9;]*m//g' | head -10 | while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::${line//%/%25}"
+          done
+          exit 0
+
+      - name: Report the end of the build log
+        if: failure()
+        run: |
+          log=/tmp/anchor-build.log
+          [ -s "$log" ] || exit 0
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*$' | tail -10 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+          exit 0
+
+      - name: Collect the build errors for a human reader
+        if: failure()
+        run: |
+          log=/tmp/anchor-build.log
+          [ -s "$log" ] || exit 0
           {
             echo '### The program did not compile'
             echo
             echo '```'
-            grep -E '^(error|warning: unused)' -A 3 "$log" | head -150 || true
+            sed -e 's/\x1b\[[0-9;]*m//g' "$log" | tail -150
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-          # Annotations are how this failure reaches a reader who can reach the
-          # Checks API but not the raw log host. Escape '%' the way the workflow
-          # command parser expects.
-          grep -E '^(error|error\[)' -A 2 "$log" | head -120 | while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error::${line//%/%25}"
-          done
           exit 0
 
       - name: Run the Anchor tests
@@ -137,23 +170,48 @@ jobs:
           set -o pipefail
           anchor test --skip-build 2>&1 | tee /tmp/anchor-test.log
 
-      - name: Report the test failures
+      - name: Report the start of the test log
         if: failure()
         run: |
           log=/tmp/anchor-test.log
           [ -s "$log" ] || exit 0
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*$' | head -10 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+          exit 0
 
+      - name: Report the failing assertions
+        if: failure()
+        run: |
+          log=/tmp/anchor-test.log
+          [ -s "$log" ] || exit 0
+          grep -i -E 'failing|error|assertion|^ +[0-9]+\)' -A 3 "$log" | sed -e 's/\x1b\[[0-9;]*m//g' | head -10 | while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::${line//%/%25}"
+          done
+          exit 0
+
+      - name: Report the end of the test log
+        if: failure()
+        run: |
+          log=/tmp/anchor-test.log
+          [ -s "$log" ] || exit 0
+          sed -e 's/\x1b\[[0-9;]*m//g' "$log" | grep -v '^[[:space:]]*$' | tail -10 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+          exit 0
+
+      - name: Collect the test failures for a human reader
+        if: failure()
+        run: |
+          log=/tmp/anchor-test.log
+          [ -s "$log" ] || exit 0
           {
             echo '### The tests did not pass'
             echo
             echo '```'
-            tail -150 "$log"
+            sed -e 's/\x1b\[[0-9;]*m//g' "$log" | tail -150
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-          tail -60 "$log" | while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error::${line//%/%25}"
-          done
           exit 0
 
       - name: Keep the raw logs
@@ -163,6 +221,19 @@ jobs:
           name: anchor-logs
           path: /tmp/anchor-*.log
           if-no-files-found: ignore
+
+      - name: Save the toolchain cache
+        if: always() && steps.toolchain.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/solana
+            target
+          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Save the IDL as an artifact
         if: success()
