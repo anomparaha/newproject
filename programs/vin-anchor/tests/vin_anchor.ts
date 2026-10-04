@@ -547,9 +547,11 @@ describe('vin-anchor', () => {
         usdcMint,
       })
       .instruction();
+    // `provider.sendAndConfirm` signs with the provider wallet, so that wallet
+    // is the fee payer and the buyer is added as the second signer. Pointing
+    // `feePayer` at the buyer instead makes the provider wallet an unknown
+    // signer, because web3.js then has no signature slot for it.
     const openDealTx = new anchor.web3.Transaction().add(openDealIx, openDealVaultsIx);
-    openDealTx.feePayer = buyer.publicKey;
-    openDealTx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
     await provider.sendAndConfirm(openDealTx, [buyer]);
 
     const vehicleVault = await getAccount(provider.connection, vaultPda(deal, LEG_VEHICLE));
@@ -795,8 +797,6 @@ describe('vin-anchor', () => {
       })
       .instruction();
     const openDeal2Tx = new anchor.web3.Transaction().add(openDeal2Ix, openDeal2VaultsIx);
-    openDeal2Tx.feePayer = buyer2.publicKey;
-    openDeal2Tx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
     await provider.sendAndConfirm(openDeal2Tx, [buyer2]);
 
     for (const leg of [LEG_VEHICLE, LEG_INSPECTION]) {
