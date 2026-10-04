@@ -238,7 +238,9 @@ pub mod vin_anchor {
         Ok(())
     }
 
-    /// Opens a deal: two vaults are created separately in one transaction.
+    /// Opens the deal record for a buyer, seller and workshop. The two vaults
+    /// are created by `open_deal_vaults`, which the client sends in the same
+    /// transaction.
     pub fn open_deal(
         ctx: Context<OpenDeal>,
         vin_hash: [u8; 32],
@@ -277,6 +279,14 @@ pub mod vin_anchor {
             vehicle_amount,
             inspection_amount,
         });
+        Ok(())
+    }
+
+    /// Creates the deal's two vaults. The work is in the account validation:
+    /// both vaults are `init` accounts in `OpenDealVaults`, so they are
+    /// created, checked against their seeds and initialized as token accounts
+    /// before this body runs.
+    pub fn open_deal_vaults(_ctx: Context<OpenDealVaults>) -> Result<()> {
         Ok(())
     }
 
@@ -1008,15 +1018,15 @@ pub struct DebugInit<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Accounts for `open_deal`. This is the largest context in the program
-/// (14 accounts, three of them `init`), and its generated `try_accounts` has
-/// to hold all of it in one stack frame. Every `Account<'info, T>` is boxed so
-/// the parsed account data lives on the heap instead of in that frame; the
-/// boxed form is a documented Anchor account type ("Box type to save stack
-/// space") and works with `init` and with the `seeds` checks that read other
-/// accounts in this struct.
+/// Accounts for `open_deal`: the deal record itself. The two vaults moved to
+/// `OpenDealVaults` because carrying them here made the generated
+/// `try_accounts` overflow the SBF stack frame budget (the linker reports
+/// "overflows the maximum allowed frame space"; the runtime then lets the
+/// frame quietly overwrite its caller's, which is undefined behaviour). The
+/// remaining `Account<'info, T>` fields are boxed so the parsed account data
+/// lives on the heap instead of in that frame.
 #[derive(Accounts)]
-#[instruction(vin_hash: [u8; 32], vehicle_amount: u64, inspection_amount: u64)]
+#[instruction(vin_hash: [u8; 32])]
 pub struct OpenDeal<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
@@ -1039,6 +1049,19 @@ pub struct OpenDeal<'info> {
         seeds = [b"deal", vin_hash.as_ref(), buyer.key().as_ref()],
         bump
     )]
+    pub deal: Box<Account<'info, DealAccount>>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Second half of `open_deal`: the deal's two vaults. The client sends this
+/// instruction straight after `open_deal` in the same transaction, so a deal
+/// never sits on chain without its vaults (and a deal without vaults cannot be
+/// funded). `init` here creates the token accounts, checks them against their
+/// seeds and sets `deal` as the authority.
+#[derive(Accounts)]
+pub struct OpenDealVaults<'info> {
+    #[account(mut)]
+    pub buyer: Signer<'info>,
     pub deal: Box<Account<'info, DealAccount>>,
     /// Vehicle fund vault.
     #[account(

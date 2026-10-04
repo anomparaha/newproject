@@ -270,13 +270,8 @@ describe('vin-anchor', () => {
       seller: seller.publicKey,
       inspector: inspector.publicKey,
       deal: probeDeal,
-      vehicleVault: vaultPda(probeDeal, LEG_VEHICLE),
-      inspectionVault: vaultPda(probeDeal, LEG_INSPECTION),
-      usdcMint,
       config: configPda,
       systemProgram: anchor.web3.SystemProgram.programId,
-      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-      rent: anchor.web3.SYSVAR_RENT_PUBKEY,
     });
     try {
       const ix = await program.methods
@@ -495,9 +490,6 @@ describe('vin-anchor', () => {
           seller: seller.publicKey,
           inspector: inspector.publicKey,
           deal,
-          vehicleVault: vaultPda(deal, LEG_VEHICLE),
-          inspectionVault: vaultPda(deal, LEG_INSPECTION),
-          usdcMint,
         })
         // `buyer` is a signer on the instruction, so the transaction has to be
         // signed by it. Without the signature the call never reaches the
@@ -528,7 +520,12 @@ describe('vin-anchor', () => {
       .signers([inspector])
       .rpc();
 
-    await program.methods
+    // The deal record and its two vaults are two instructions sent in one
+    // transaction: the single fourteen-account instruction overflowed the SBF
+    // stack frame budget (the program's comments say where), so vault creation
+    // moved to its own context. Sending both together keeps the promise that a
+    // deal is never on chain without its vaults.
+    const openDealIx = await program.methods
       .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
       .accounts({
         buyer: buyer.publicKey,
@@ -538,12 +535,22 @@ describe('vin-anchor', () => {
         seller: seller.publicKey,
         inspector: inspector.publicKey,
         deal,
+      })
+      .instruction();
+    const openDealVaultsIx = await program.methods
+      .openDealVaults()
+      .accounts({
+        buyer: buyer.publicKey,
+        deal,
         vehicleVault: vaultPda(deal, LEG_VEHICLE),
         inspectionVault: vaultPda(deal, LEG_INSPECTION),
         usdcMint,
       })
-      .signers([buyer])
-      .rpc();
+      .instruction();
+    const openDealTx = new anchor.web3.Transaction().add(openDealIx, openDealVaultsIx);
+    openDealTx.feePayer = buyer.publicKey;
+    openDealTx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    await provider.sendAndConfirm(openDealTx, [buyer]);
 
     const vehicleVault = await getAccount(provider.connection, vaultPda(deal, LEG_VEHICLE));
     const inspectionVault = await getAccount(provider.connection, vaultPda(deal, LEG_INSPECTION));
@@ -764,7 +771,8 @@ describe('vin-anchor', () => {
       .rpc();
 
     const deal2 = dealPda(buyer2.publicKey);
-    await program.methods
+    // The same pair of instructions test 2 sends: the deal, then its vaults.
+    const openDeal2Ix = await program.methods
       .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
       .accounts({
         buyer: buyer2.publicKey,
@@ -774,12 +782,22 @@ describe('vin-anchor', () => {
         seller: seller.publicKey,
         inspector: inspector.publicKey,
         deal: deal2,
+      })
+      .instruction();
+    const openDeal2VaultsIx = await program.methods
+      .openDealVaults()
+      .accounts({
+        buyer: buyer2.publicKey,
+        deal: deal2,
         vehicleVault: vaultPda(deal2, LEG_VEHICLE),
         inspectionVault: vaultPda(deal2, LEG_INSPECTION),
         usdcMint,
       })
-      .signers([buyer2])
-      .rpc();
+      .instruction();
+    const openDeal2Tx = new anchor.web3.Transaction().add(openDeal2Ix, openDeal2VaultsIx);
+    openDeal2Tx.feePayer = buyer2.publicKey;
+    openDeal2Tx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+    await provider.sendAndConfirm(openDeal2Tx, [buyer2]);
 
     for (const leg of [LEG_VEHICLE, LEG_INSPECTION]) {
       const amount = leg === LEG_VEHICLE ? VEHICLE_AMOUNT : INSPECTION_AMOUNT;

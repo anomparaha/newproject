@@ -198,16 +198,17 @@ jobs:
           echo "marker occurrences: $(strings target/deploy/vin_anchor.so | grep -c 'vin-anchor build marker' || true)"
           strings target/deploy/vin_anchor.so | grep 'vin-anchor build marker' || echo "no marker string in the binary"
 
-      # TEMPORARY DIAGNOSTIC. The `deal` seeds check derives an address that no
-      # combination of the seeds it is given reproduces, and the two plausible
-      # mechanisms -- code generation for the seeds expression itself, or a
-      # stack frame larger than what the VM budgets per call -- both depend on
-      # the SBF version the ELF declares: `e_flags` selects it (0 = V0 .. 4 = V4)
-      # and only V0 keeps guard gaps between the fixed 4 KiB frames. Printed as
-      # warnings so the values survive in the check-run annotations even though
-      # the job log itself cannot be downloaded. Remove with the rest of the
-      # temporary diagnostics.
-      - name: "TEMPORARY DIAGNOSTIC: report the SBF version and stack frames"
+      # The SBF VM gives every call a fixed stack window, and a frame that
+      # overruns it quietly overwrites its caller's frame: undefined behaviour
+      # that shows up at runtime as nonsense -- a seeds check comparing a
+      # garbage address, a config that reads as paused. This project hit that
+      # once with OpenDeal's fourteen accounts and three inits (the linker
+      # reported a 4480 byte frame against a 4096 byte budget and the build
+      # still succeeded). So the gate lives here: no function over the frame
+      # budget, or the tests do not run. The SBF version is printed as well,
+      # because it decides which stack rules apply (`e_flags` 0 = V0 .. 4 = V4;
+      # only V0 keeps guard gaps between the fixed 4 KiB frames).
+      - name: Refuse to test a program whose stack frames do not fit
         run: |
           python3 - <<'PY' || echo "::warning::could not read e_flags from the ELF"
           import struct
@@ -217,18 +218,16 @@ jobs:
           names = {0: 'V0', 1: 'V1', 2: 'V2', 3: 'V3', 4: 'V4'}
           print(f"::warning::SBF e_flags = {e_flags} -> SBPFVersion::{names.get(e_flags, 'Reserved')}")
           PY
-          if [ -s /tmp/anchor-build.log ]; then
-            echo "::warning::build log lines mentioning stack frames: $(grep -c -i 'stack frame\|frame size' /tmp/anchor-build.log || true)"
-            grep -i 'stack frame\|frame size' /tmp/anchor-build.log | head -8 | sed 's/^/::warning::build: /' || true
-          else
-            echo "::warning::no /tmp/anchor-build.log to grep for stack frames"
+          if [ ! -s /tmp/anchor-build.log ]; then
+            echo "::error::the build log is missing, so frame sizes cannot be checked"
+            exit 1
           fi
-          OBJDUMP=$(ls "$HOME"/.cache/solana/*/platform-tools/llvm-objdump 2>/dev/null | head -1)
-          if [ -n "$OBJDUMP" ]; then
-            echo "::warning::objdump r10 stack bumps: $("$OBJDUMP" -d target/deploy/vin_anchor.so 2>/dev/null | grep -c 'add64.*r10' || true)"
-            "$OBJDUMP" -d target/deploy/vin_anchor.so 2>/dev/null | grep 'add64.*r10' | head -5 | sed 's/^/::warning::objdump: /' || true
-          else
-            echo "::warning::no llvm-objdump in the platform-tools cache to inspect the ELF"
+          overflows=$(grep -c -i "overflows the maximum allowed frame space" /tmp/anchor-build.log || true)
+          echo "::warning::functions over the SBF frame budget: $overflows"
+          if [ "$overflows" != "0" ]; then
+            grep -i "overflows the maximum allowed frame space" /tmp/anchor-build.log | head -10 | sed 's/^/::error::/'
+            echo "::error::not running the tests: this program has a function whose stack frame does not fit the SBF budget, which is undefined behaviour at runtime"
+            exit 1
           fi
 
       # GitHub keeps ten annotations per step and silently drops the rest, and
