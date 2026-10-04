@@ -9,7 +9,7 @@ export function reputationRoutes(ctx: AppContext): Hono {
 
   app.get('/reputation/:actorId', (c) => {
     const result = recomputeReputation(ctx.db, c.req.param('actorId'));
-    message: 'Actor not found'
+    if (!result) return c.json({ error: { code: 'NOT_FOUND', message: 'Actor not found' } }, 404);
     return c.json({ reputation: result, note: 'Ranking is not for sale. Order comes from report and dispute performance.' });
   });
 

@@ -74,7 +74,7 @@ export function metaRoutes(ctx: AppContext): Hono {
    */
   app.get('/demo/actors', (c) => {
     if (process.env.VIN_DEMO_MODE === 'false') {
-      message: 'Demo mode is off'
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Demo mode is off' } }, 404);
     }
     const rows = all(ctx.db, 'SELECT * FROM actors ORDER BY role, created_at');
     return c.json({

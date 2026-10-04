@@ -179,6 +179,34 @@ class Expectation {
     const ok = Object.prototype.hasOwnProperty.call(table, kind) ? table[kind] : t === kind;
     return this._check(ok, `expected ${fmt(this._v)} to be a ${kind}`);
   }
+  an(kind) {
+    return this.a(kind);
+  }
+  /**
+   * chai's `.property(name[, value])`: asserts the property exists on an object
+   * (or a matching entry exists in an array), and, when a value is given, that
+   * it equals the expected one.
+   */
+  property(name, value) {
+    const target = this._v;
+    let present = false;
+    let actual;
+    if (Array.isArray(target)) {
+      for (const item of target) {
+        if (item !== null && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, name)) {
+          present = true;
+          actual = item[name];
+          break;
+        }
+      }
+    } else if (target !== null && typeof target === 'object') {
+      present = Object.prototype.hasOwnProperty.call(target, name);
+      actual = present ? target[name] : undefined;
+    }
+    const matches = arguments.length < 2 ? present : present && isDeepStrictEqual(actual, value);
+    const detail = arguments.length < 2 ? `to have property ${fmt(name)}` : `to have property ${fmt(name)} equal to ${fmt(value)}`;
+    return this._check(matches, `expected ${fmt(target)} ${detail}`);
+  }
   within(lo, hi) {
     return this._check(typeof this._v === 'number' && this._v >= lo && this._v <= hi, `expected ${fmt(this._v)} to be within ${lo}..${hi}`);
   }
@@ -281,12 +309,29 @@ async function runFolder(folderName) {
       const res = await fetch(url, init);
       const text = await res.text();
       status = res.status;
+      // Postman's `pm.response.headers` is a header list, not a plain object:
+      // the collection reads headers through `.get(name)`, and Postman matches
+      // names case-insensitively. Provide that surface (plus `.has`/`.all`)
+      // over the fetched headers while keeping the raw map for inspection.
+      const rawHeaders = Object.fromEntries(res.headers.entries());
+      const headerList = {
+        ...rawHeaders,
+        get: (name) => {
+          const wanted = String(name).toLowerCase();
+          for (const [key, value] of Object.entries(rawHeaders)) {
+            if (key.toLowerCase() === wanted) return value;
+          }
+          return undefined;
+        },
+        has: (name) => headerList.get(name) !== undefined,
+        all: () => Object.entries(rawHeaders).map(([key, value]) => ({ key, value })),
+      };
       pm.response = {
         code: res.status,
         status: res.statusText,
         text: () => text,
         json: () => JSON.parse(text),
-        headers: Object.fromEntries(res.headers.entries()),
+        headers: headerList,
         to: {
           get have() { return this; },
           get be() { return this; },

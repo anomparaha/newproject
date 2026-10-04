@@ -82,8 +82,14 @@ jobs:
           tail -30 /tmp/vin-api.log
           exit 1
 
-      - name: Run the flow folders (Happy Path, Dispute Path, Odometer Regression)
-        run: npm run collection:run
+      # Every folder, not only the three flow folders: the CRUD folders carry
+      # the response-shape assertions (33 requests), and those are what caught a
+      # real defect - resolving an already-resolved dispute answered 500 because
+      # an i18n refactor had dropped a `return c.json(...)` guard. The tests are
+      # written to tolerate stale ids (status < 500 plus a shape check only on
+      # 2xx), so a fresh seed is all they need.
+      - name: Run the collection folders (flows + CRUD assertions)
+        run: npm run collection:run -- --all
 
       - name: Show the API log when the flow folders fail
         if: failure()

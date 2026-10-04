@@ -1,12 +1,28 @@
 // One-shot enrichment of the "VIN API" collection:
 //  - inserts a Markdown `description` into every request that lacks one
 //  - appends an afterResponse test `scripts` block to CRUD requests that lack one
-// Idempotent + preserves CRLF. Run: node tools/enrich-collection.mjs
+// Idempotent + preserves each file's own line endings. Run: node tools/enrich-collection.mjs
+//
+// The collection directory defaults to the one inside this checkout, so the
+// script works on any machine; override it with VIN_COLLECTION_DIR (or the
+// same `--collection <dir>` the runner accepts) for another checkout.
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = 'C:/Users/shole/OneDrive/Desktop/VIN/postman/collections/VIN API';
-const NL = '\r\n';
+const argCollection = (() => {
+  const i = process.argv.indexOf('--collection');
+  return i >= 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : null;
+})();
+const ROOT = path.resolve(
+  argCollection ??
+    process.env.VIN_COLLECTION_DIR ??
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'postman', 'collections', 'VIN API'),
+);
+if (!fs.existsSync(ROOT)) {
+  console.error(`collection directory not found: ${ROOT}`);
+  process.exit(2);
+}
 
 // relpath (folder/base, no extension) -> { shape } for files that should ALSO get a test block.
 // shape: { list:'key' } | { key:'key' } | { object:true }
@@ -96,9 +112,9 @@ function nameFromContent(content, base) {
   return m[1].replace(/^['"]|['"]$/g, '');
 }
 
-function buildDescription(lines) {
-  let out = 'description: |-' + NL;
-  for (const l of lines) out += (l === '' ? '' : '  ' + l) + NL;
+function buildDescription(lines, nl) {
+  let out = 'description: |-' + nl;
+  for (const l of lines) out += (l === '' ? '' : '  ' + l) + nl;
   return out;
 }
 
@@ -108,7 +124,7 @@ function shapeLine(shape) {
   return `pm.test('object body', () => pm.expect(b).to.be.an('object'));`;
 }
 
-function buildScripts(shape) {
+function buildScripts(shape, nl) {
   const code = [
     `pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));`,
     `pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));`,
@@ -117,11 +133,11 @@ function buildScripts(shape) {
     `  ${shapeLine(shape)}`,
     `}`,
   ];
-  let out = 'scripts:' + NL;
-  out += '  - type: afterResponse' + NL;
-  out += '    language: text/javascript' + NL;
-  out += '    code: |-' + NL;
-  for (const l of code) out += '      ' + l + NL;
+  let out = 'scripts:' + nl;
+  out += '  - type: afterResponse' + nl;
+  out += '    language: text/javascript' + nl;
+  out += '    code: |-' + nl;
+  for (const l of code) out += '      ' + l + nl;
   return out;
 }
 
@@ -143,6 +159,9 @@ for (const full of files) {
   const topFolder = key.split('/')[0];
   const base = key.split('/').pop();
   let content = fs.readFileSync(full, 'utf8');
+  // Preserve the file's own line endings: the repo stores these YAML files with
+  // LF, while a Windows checkout with core.autocrlf checks them out as CRLF.
+  const NL = content.includes('\r\n') ? '\r\n' : '\n';
   const hasDesc = /^description:/m.test(content);
   const hasScripts = /^scripts:/m.test(content);
 
@@ -158,7 +177,7 @@ for (const full of files) {
     else if (FLOW[topFolder]) purpose = FLOW[topFolder](display);
     else purpose = `${method} ${urlPath} endpoint of the VIN API.`;
     const codeLine = '`' + method + ' ' + urlPath + '`' + (hasActor ? ' Requires an `x-actor-id` header identifying the caller.' : '');
-    content = insertAfterAnchor(content, buildDescription([purpose, '', codeLine]));
+    content = insertAfterAnchor(content, buildDescription([purpose, '', codeLine], NL));
     descAdded++;
   }
   descTotal++;
@@ -166,7 +185,7 @@ for (const full of files) {
   // 2) scripts (only CRUD test targets, only if none present)
   if (TEST_TARGETS[key] && !hasScripts) {
     if (!content.endsWith(NL)) content += NL;
-    content += buildScripts(TEST_TARGETS[key]);
+    content += buildScripts(TEST_TARGETS[key], NL);
     scriptsAdded++;
   }
   if (/^scripts:/m.test(content)) scriptsTotal++;

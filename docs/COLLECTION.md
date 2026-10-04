@@ -13,6 +13,14 @@ mesin lokal untuk hasil yang sama.
 | `E2E Happy Path` | listing → deal → escrow → inspeksi → handover → release |
 | `E2E Dispute Path` | sengketa, arbitrase, refund |
 | `Regression - Odometer Baseline` | kontrol anomali + pembuktian bahwa relist murah tidak bisa mereset baseline odometer |
+| folder CRUD (Actors, Corridors, Deals, Listings, Meta, Reputation, `0. Setup`) | bentuk respons tiap endpoint: "tidak ada server error" + JSON + pemeriksaan bentuk saat 2xx |
+
+CI menjalankan **semua** folder (`--all`), bukan hanya tiga folder flow: blok
+assertion di folder CRUD-lah yang pernah menangkap cacat nyata (memutuskan
+sengketa yang sudah selesai menjawab 500 karena refactor i18n menghilangkan
+`return c.json(...)`). Assertion CRUD sengaja toleran terhadap ID basi — status
+harus < 500, dan pemeriksaan bentuk hanya jalan bila respons 2xx — jadi cukup
+`seed:reset` sebelum menjalankannya.
 
 Runner menjalankan request menurut `order` di tiap folder, menjalankan script
 `beforeRequest`/`afterResponse` apa adanya, dan melaporkan tiap assertion.

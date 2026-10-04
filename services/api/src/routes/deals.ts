@@ -728,7 +728,7 @@ export function dealRoutes(ctx: AppContext): Hono {
     const dispute = get(db, 'SELECT * FROM disputes WHERE id = ?', [disputeId]);
     if (!dispute) return c.json({ error: { code: 'NOT_FOUND', message: 'Dispute not found' } }, 404);
     if (String(dispute.state) !== 'open') {
-      message: 'The dispute is already resolved'
+      return c.json({ error: { code: 'INVALID_TRANSITION', message: 'The dispute is already resolved' } }, 409);
     }
     const arbiter = get(db, 'SELECT * FROM actors WHERE id = ?', [input.arbiterId]);
     if (!arbiter || arbiter.role !== 'arbiter') {
