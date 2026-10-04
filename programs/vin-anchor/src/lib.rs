@@ -228,6 +228,16 @@ pub mod vin_anchor {
         Ok(())
     }
 
+    /// TEMPORARY DIAGNOSTIC (see `DebugInit`). Creates a deal account through
+    /// the same seeds expression `open_deal` uses, in a context small enough
+    /// that its stack frame cannot be the problem.
+    pub fn debug_init(ctx: Context<DebugInit>, vin_hash: [u8; 32]) -> Result<()> {
+        let deal = &mut ctx.accounts.deal;
+        deal.vin_hash = vin_hash;
+        deal.bump = ctx.bumps.deal;
+        Ok(())
+    }
+
     /// Opens a deal: two vaults are created separately in one transaction.
     pub fn open_deal(
         ctx: Context<OpenDeal>,
@@ -976,19 +986,48 @@ pub struct DebugSeeds<'info> {
     pub buyer_actor: UncheckedAccount<'info>,
 }
 
+/// TEMPORARY DIAGNOSTIC. The exact seeds expression `open_deal` uses, in the
+/// smallest account struct that can carry it: one signer, one `init` account,
+/// the system program. If this derives the same address the client computes,
+/// the expression itself is fine and the failure in `open_deal` comes from the
+/// size of that context; if it derives something else, the expression is what
+/// breaks. Remove it with the rest of the diagnostics.
+#[derive(Accounts)]
+#[instruction(vin_hash: [u8; 32])]
+pub struct DebugInit<'info> {
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+    #[account(
+        init,
+        payer = buyer,
+        space = DealAccount::LEN,
+        seeds = [b"deal", vin_hash.as_ref(), buyer.key().as_ref()],
+        bump
+    )]
+    pub deal: Account<'info, DealAccount>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Accounts for `open_deal`. This is the largest context in the program
+/// (14 accounts, three of them `init`), and its generated `try_accounts` has
+/// to hold all of it in one stack frame. Every `Account<'info, T>` is boxed so
+/// the parsed account data lives on the heap instead of in that frame; the
+/// boxed form is a documented Anchor account type ("Box type to save stack
+/// space") and works with `init` and with the `seeds` checks that read other
+/// accounts in this struct.
 #[derive(Accounts)]
 #[instruction(vin_hash: [u8; 32], vehicle_amount: u64, inspection_amount: u64)]
 pub struct OpenDeal<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
     #[account(seeds = [b"config"], bump = config.bump)]
-    pub config: Account<'info, Config>,
+    pub config: Box<Account<'info, Config>>,
     #[account(mut, seeds = [b"actor", buyer.key().as_ref()], bump)]
-    pub buyer_actor: Account<'info, ActorAccount>,
+    pub buyer_actor: Box<Account<'info, ActorAccount>>,
     #[account(mut, seeds = [b"actor", seller.key().as_ref()], bump)]
-    pub seller_actor: Account<'info, ActorAccount>,
+    pub seller_actor: Box<Account<'info, ActorAccount>>,
     #[account(seeds = [b"actor", inspector.key().as_ref()], bump)]
-    pub inspector_actor: Account<'info, ActorAccount>,
+    pub inspector_actor: Box<Account<'info, ActorAccount>>,
     /// CHECK: seller wallet; identity is checked via seller_actor.
     pub seller: UncheckedAccount<'info>,
     /// CHECK: workshop wallet; identity is checked via inspector_actor.
@@ -1000,7 +1039,7 @@ pub struct OpenDeal<'info> {
         seeds = [b"deal", vin_hash.as_ref(), buyer.key().as_ref()],
         bump
     )]
-    pub deal: Account<'info, DealAccount>,
+    pub deal: Box<Account<'info, DealAccount>>,
     /// Vehicle fund vault.
     #[account(
         init,
@@ -1010,7 +1049,7 @@ pub struct OpenDeal<'info> {
         seeds = [b"vault", deal.key().as_ref(), &[LEG_VEHICLE]],
         bump
     )]
-    pub vehicle_vault: Account<'info, TokenAccount>,
+    pub vehicle_vault: Box<Account<'info, TokenAccount>>,
     /// Inspection fund vault — separate from the vehicle vault.
     #[account(
         init,
@@ -1020,8 +1059,8 @@ pub struct OpenDeal<'info> {
         seeds = [b"vault", deal.key().as_ref(), &[LEG_INSPECTION]],
         bump
     )]
-    pub inspection_vault: Account<'info, TokenAccount>,
-    pub usdc_mint: Account<'info, Mint>,
+    pub inspection_vault: Box<Account<'info, TokenAccount>>,
+    pub usdc_mint: Box<Account<'info, Mint>>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,

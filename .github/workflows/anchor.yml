@@ -198,6 +198,39 @@ jobs:
           echo "marker occurrences: $(strings target/deploy/vin_anchor.so | grep -c 'vin-anchor build marker' || true)"
           strings target/deploy/vin_anchor.so | grep 'vin-anchor build marker' || echo "no marker string in the binary"
 
+      # TEMPORARY DIAGNOSTIC. The `deal` seeds check derives an address that no
+      # combination of the seeds it is given reproduces, and the two plausible
+      # mechanisms -- code generation for the seeds expression itself, or a
+      # stack frame larger than what the VM budgets per call -- both depend on
+      # the SBF version the ELF declares: `e_flags` selects it (0 = V0 .. 4 = V4)
+      # and only V0 keeps guard gaps between the fixed 4 KiB frames. Printed as
+      # warnings so the values survive in the check-run annotations even though
+      # the job log itself cannot be downloaded. Remove with the rest of the
+      # temporary diagnostics.
+      - name: "TEMPORARY DIAGNOSTIC: report the SBF version and stack frames"
+        run: |
+          python3 - <<'PY' || echo "::warning::could not read e_flags from the ELF"
+          import struct
+          with open('target/deploy/vin_anchor.so', 'rb') as fh:
+              head = fh.read(64)
+          e_flags = struct.unpack_from('<I', head, 48)[0]
+          names = {0: 'V0', 1: 'V1', 2: 'V2', 3: 'V3', 4: 'V4'}
+          print(f"::warning::SBF e_flags = {e_flags} -> SBPFVersion::{names.get(e_flags, 'Reserved')}")
+          PY
+          if [ -s /tmp/anchor-build.log ]; then
+            echo "::warning::build log lines mentioning stack frames: $(grep -c -i 'stack frame\|frame size' /tmp/anchor-build.log || true)"
+            grep -i 'stack frame\|frame size' /tmp/anchor-build.log | head -8 | sed 's/^/::warning::build: /' || true
+          else
+            echo "::warning::no /tmp/anchor-build.log to grep for stack frames"
+          fi
+          OBJDUMP=$(ls "$HOME"/.cache/solana/*/platform-tools/llvm-objdump 2>/dev/null | head -1)
+          if [ -n "$OBJDUMP" ]; then
+            echo "::warning::objdump r10 stack bumps: $("$OBJDUMP" -d target/deploy/vin_anchor.so 2>/dev/null | grep -c 'add64.*r10' || true)"
+            "$OBJDUMP" -d target/deploy/vin_anchor.so 2>/dev/null | grep 'add64.*r10' | head -5 | sed 's/^/::warning::objdump: /' || true
+          else
+            echo "::warning::no llvm-objdump in the platform-tools cache to inspect the ELF"
+          fi
+
       # GitHub keeps ten annotations per step and silently drops the rest, and
       # the useful lines of a failed build sit in different places: the command
       # and its first complaint at the top, the compiler errors in the middle,

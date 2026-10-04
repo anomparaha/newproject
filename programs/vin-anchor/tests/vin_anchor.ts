@@ -86,6 +86,12 @@ describe('vin-anchor', () => {
     };
     const code = err.error && err.error.errorCode ? `${err.error.errorCode.code}(${err.error.errorCode.number})` : 'no error code';
     console.log(`${label}: ${code} ${(err.error && err.error.errorMessage) || err.message || String(e)}`);
+    // TEMPORARY DIAGNOSTIC. The same message as one line with the
+    // workflow-command prefix, so the addresses a failing seeds check compared
+    // become annotations of the test step and survive without the raw log.
+    console.log(
+      `::warning::${label}: ${String((e as Error).message ?? e).replace(/\s*\n\s*/g, ' | ').slice(0, 400)}`,
+    );
     for (const line of err.logs || []) {
       console.log(`  | ${line}`);
     }
@@ -444,6 +450,32 @@ describe('vin-anchor', () => {
       await showMetas('slashBond (passes)', ix, 'slashBond');
     } catch (e) {
       console.log(`slashBond instruction could not be built: ${String(e)}`);
+    }
+  });
+
+  // TEMPORARY DIAGNOSTIC. Runs the same seeds expression `open_deal` uses in
+  // the smallest possible `init` struct, so a bad derivation can be told apart
+  // from a context whose account struct is too large for the frame it is built
+  // in. Prints one line with the workflow-command prefix on both outcomes, so
+  // the result is readable from the run's annotations. Remove it with the
+  // `debug_init` instruction in the program.
+  it('0. TEMPORARY DIAGNOSTIC: a minimal init struct derives the deal PDA', async () => {
+    const buyer2 = Keypair.generate();
+    const sig = await provider.connection.requestAirdrop(buyer2.publicKey, 2 * LAMPORTS_PER_SOL);
+    await provider.connection.confirmTransaction(sig);
+    const expected = pda([Buffer.from('deal'), Buffer.from(vinHash), buyer2.publicKey.toBuffer()]);
+    try {
+      await program.methods
+        .debugInit(vinHash)
+        .accounts({ buyer: buyer2.publicKey, deal: expected })
+        .signers([buyer2])
+        .rpc();
+      console.log(`::warning::debug_init: expected ${expected.toBase58()} -- instruction SUCCEEDED`);
+    } catch (e) {
+      console.log(
+        `::warning::debug_init: expected ${expected.toBase58()} -- FAILED: ${String((e as Error).message ?? e).replace(/\s*\n\s*/g, ' | ').slice(0, 300)}`,
+      );
+      throw e;
     }
   });
 
