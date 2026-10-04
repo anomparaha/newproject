@@ -997,14 +997,7 @@ pub struct OpenDeal<'info> {
         init,
         payer = buyer,
         space = DealAccount::LEN,
-        seeds = [
-            dbg_seed(0xe0, b"deal"),
-            dbg_seed(0xe8, vin_hash.as_ref()),
-            dbg_seed(0xf0, buyer.key().as_ref()),
-            dbg_str(0x100, &deal.key()),
-            dbg_str(0x108, &__program_id),
-            dbg_find(0x110, &[b"deal", vin_hash.as_ref(), buyer.key().as_ref()], __program_id),
-        ],
+        seeds = [b"deal", vin_hash.as_ref(), buyer.key().as_ref()],
         bump
     )]
     pub deal: Account<'info, DealAccount>,
@@ -1014,7 +1007,7 @@ pub struct OpenDeal<'info> {
         payer = buyer,
         token::mint = usdc_mint,
         token::authority = deal,
-        seeds = [b"vault", deal.key().as_ref(), &[LEG_VEHICLE], dbg_str(0x140, &deal.key()), dbg_str(0x150, &__pda_address)],
+        seeds = [b"vault", deal.key().as_ref(), &[LEG_VEHICLE]],
         bump
     )]
     pub vehicle_vault: Account<'info, TokenAccount>,
@@ -1024,7 +1017,7 @@ pub struct OpenDeal<'info> {
         payer = buyer,
         token::mint = usdc_mint,
         token::authority = deal,
-        seeds = [b"vault", deal.key().as_ref(), &[LEG_INSPECTION], dbg_str(0x158, &__pda_address)],
+        seeds = [b"vault", deal.key().as_ref(), &[LEG_INSPECTION]],
         bump
     )]
     pub inspection_vault: Account<'info, TokenAccount>,
