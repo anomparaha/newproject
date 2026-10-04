@@ -1,5 +1,19 @@
 $kind: http-request
 name: List Deals
+description: |-
+  List deals.
+
+  `GET /api/deals`
 order: 9000
 method: GET
 url: '{{baseUrl}}/api/deals'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));
+      pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));
+      if (pm.response.code < 300) {
+        const b = pm.response.json();
+        pm.test('deals array', () => { pm.expect(b).to.have.property('deals'); pm.expect(b.deals).to.be.an('array'); });
+      }

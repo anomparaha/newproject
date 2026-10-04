@@ -1,5 +1,9 @@
 $kind: http-request
 name: '5. Fund Deal'
+description: |-
+  End-to-end happy-path step: 5. Fund Deal. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/deals/:id/fund` Requires an `x-actor-id` header identifying the caller.
 order: 500
 method: POST
 url: '{{baseUrl}}/api/deals/:id/fund'

@@ -1,5 +1,9 @@
 $kind: http-request
 name: '4. Bond Inspector Capacity'
+description: |-
+  Odometer-baseline regression step: 4. Bond Inspector Capacity. Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/actors/:id/bonds`
 order: 400
 method: POST
 url: '{{baseUrl}}/api/actors/:id/bonds'

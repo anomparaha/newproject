@@ -1,8 +1,22 @@
 $kind: http-request
 name: Note Metadata
+description: |-
+  Fetch the metadata and evidence trail for a single digital receipt.
+
+  `GET /api/notes/:id/metadata`
 order: 13000
 method: GET
 url: '{{baseUrl}}/api/notes/:id/metadata'
 pathVariables:
   - key: id
     value: '{{noteId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));
+      pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));
+      if (pm.response.code < 300) {
+        const b = pm.response.json();
+        pm.test('object body', () => pm.expect(b).to.be.an('object'));
+      }

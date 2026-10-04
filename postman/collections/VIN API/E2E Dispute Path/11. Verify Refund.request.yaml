@@ -1,5 +1,9 @@
 $kind: http-request
 name: '11. Verify Refund'
+description: |-
+  End-to-end dispute-path step: 11. Verify Refund. Runs in order to drive a deal into a dispute and an arbiter-ordered buyer refund.
+
+  `GET /api/deals/:id`
 order: 1100
 method: GET
 url: '{{baseUrl}}/api/deals/:id'

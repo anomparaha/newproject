@@ -1,5 +1,9 @@
 $kind: http-request
 name: '1. Setup - Load Demo Actors'
+description: |-
+  Odometer-baseline regression step: 1. Setup - Load Demo Actors. Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `GET /api/demo/actors`
 order: 100
 method: GET
 url: '{{baseUrl}}/api/demo/actors'

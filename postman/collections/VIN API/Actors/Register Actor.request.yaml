@@ -1,5 +1,9 @@
 $kind: http-request
 name: Register Actor
+description: |-
+  Register a new actor on the platform — a `seller`, `buyer`, inspection workshop (`inspector`), `curator`, or `arbiter`.
+
+  `POST /api/actors` — no authentication required. Body fields: `role` (required), `displayName`, `email`, `countryCode` (ISO-2), `city`. Returns `201` with `{ actor, note }`. Capture `actor.id` to use as `{{actorId}}` in subsequent requests.
 order: 1000
 method: POST
 url: '{{baseUrl}}/api/actors'
@@ -16,3 +20,13 @@ body:
       "countryCode": "US",
       "city": "Los Angeles"
     }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));
+      pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));
+      if (pm.response.code < 300) {
+        const b = pm.response.json();
+        pm.test('actor returned', () => { pm.expect(b).to.have.property('actor'); pm.expect(b.actor).to.have.property('id'); });
+      }

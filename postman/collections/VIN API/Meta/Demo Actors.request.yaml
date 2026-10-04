@@ -1,5 +1,19 @@
 $kind: http-request
 name: Demo Actors
+description: |-
+  List demo personas for choosing an actor in the UI. Demo-mode only; production uses Sign-In With Solana and identity attestations instead of the x-actor-id header.
+
+  `GET /api/demo/actors`
 order: 4000
 method: GET
 url: '{{baseUrl}}/api/demo/actors'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));
+      pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));
+      if (pm.response.code < 300) {
+        const b = pm.response.json();
+        pm.test('actors array', () => { pm.expect(b).to.have.property('actors'); pm.expect(b.actors).to.be.an('array'); });
+      }

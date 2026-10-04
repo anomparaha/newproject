@@ -1,5 +1,9 @@
 $kind: http-request
 name: '2. Register Buyer'
+description: |-
+  End-to-end happy-path step: 2. Register Buyer. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/actors`
 order: 200
 method: POST
 url: '{{baseUrl}}/api/actors'

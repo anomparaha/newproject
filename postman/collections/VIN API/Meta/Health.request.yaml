@@ -1,5 +1,9 @@
 $kind: http-request
 name: Health
+description: |-
+  Liveness/health check. Returns status, service name, lifecycle stage, and the configured escrow provider.
+
+  `GET /api/health`
 order: 1000
 method: GET
 url: '{{baseUrl}}/api/health'

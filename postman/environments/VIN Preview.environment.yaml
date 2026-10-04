@@ -1,0 +1,6 @@
+name: VIN Preview
+values:
+  - key: baseUrl
+    value: 'https://your-e2b-preview-url.e2b.dev'
+    enabled: true
+    type: default

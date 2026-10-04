@@ -1,5 +1,9 @@
 $kind: http-request
 name: '4. Bond Inspector Capacity'
+description: |-
+  End-to-end dispute-path step: 4. Bond Inspector Capacity. Runs in order to drive a deal into a dispute and an arbiter-ordered buyer refund.
+
+  `POST /api/actors/:id/bonds`
 order: 400
 method: POST
 url: '{{baseUrl}}/api/actors/:id/bonds'

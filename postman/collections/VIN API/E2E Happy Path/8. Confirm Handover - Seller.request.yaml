@@ -1,5 +1,9 @@
 $kind: http-request
 name: '8. Confirm Handover - Seller'
+description: |-
+  End-to-end happy-path step: 8. Confirm Handover - Seller. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/deals/:id/handover` Requires an `x-actor-id` header identifying the caller.
 order: 800
 method: POST
 url: '{{baseUrl}}/api/deals/:id/handover'

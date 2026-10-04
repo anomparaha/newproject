@@ -1,5 +1,9 @@
 $kind: http-request
 name: '3. Create Listing'
+description: |-
+  End-to-end happy-path step: 3. Create Listing. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/listings` Requires an `x-actor-id` header identifying the caller.
 order: 300
 method: POST
 url: '{{baseUrl}}/api/listings'

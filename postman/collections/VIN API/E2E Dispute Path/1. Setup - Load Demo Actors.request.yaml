@@ -1,5 +1,9 @@
 $kind: http-request
 name: '1. Setup - Load Demo Actors'
+description: |-
+  End-to-end dispute-path step: 1. Setup - Load Demo Actors. Runs in order to drive a deal into a dispute and an arbiter-ordered buyer refund.
+
+  `GET /api/demo/actors`
 order: 100
 method: GET
 url: '{{baseUrl}}/api/demo/actors'

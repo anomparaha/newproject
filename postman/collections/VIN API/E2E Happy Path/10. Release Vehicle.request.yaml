@@ -1,5 +1,9 @@
 $kind: http-request
 name: '10. Release Vehicle'
+description: |-
+  End-to-end happy-path step: 10. Release Vehicle. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/deals/:id/release-vehicle` Requires an `x-actor-id` header identifying the caller.
 order: 1000
 method: POST
 url: '{{baseUrl}}/api/deals/:id/release-vehicle'

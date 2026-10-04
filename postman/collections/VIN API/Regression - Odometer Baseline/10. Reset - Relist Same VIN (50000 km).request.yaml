@@ -1,5 +1,9 @@
 $kind: http-request
 name: '10. Reset - Relist Same VIN (50000 km)'
+description: |-
+  Odometer-baseline regression step: 10. Reset - Relist Same VIN (50000 km). Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/listings` Requires an `x-actor-id` header identifying the caller.
 order: 1000
 method: POST
 url: '{{baseUrl}}/api/listings'

@@ -1,5 +1,9 @@
 $kind: http-request
 name: '2b. Bond Inspector Capacity'
+description: |-
+  End-to-end happy-path step: 2b. Bond Inspector Capacity. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/actors/:id/bonds`
 order: 220
 method: POST
 url: '{{baseUrl}}/api/actors/:id/bonds'

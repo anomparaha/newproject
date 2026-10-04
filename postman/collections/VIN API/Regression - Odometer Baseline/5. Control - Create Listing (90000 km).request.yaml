@@ -1,5 +1,9 @@
 $kind: http-request
 name: '5. Control - Create Listing (90000 km)'
+description: |-
+  Odometer-baseline regression step: 5. Control - Create Listing (90000 km). Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/listings` Requires an `x-actor-id` header identifying the caller.
 order: 500
 method: POST
 url: '{{baseUrl}}/api/listings'

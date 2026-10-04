@@ -1,5 +1,9 @@
 $kind: http-request
 name: '2. Register Buyer'
+description: |-
+  Odometer-baseline regression step: 2. Register Buyer. Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/actors`
 order: 200
 method: POST
 url: '{{baseUrl}}/api/actors'

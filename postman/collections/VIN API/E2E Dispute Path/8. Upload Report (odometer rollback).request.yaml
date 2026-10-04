@@ -1,5 +1,9 @@
 $kind: http-request
 name: '8. Upload Report (odometer rollback)'
+description: |-
+  End-to-end dispute-path step: 8. Upload Report (odometer rollback). Runs in order to drive a deal into a dispute and an arbiter-ordered buyer refund.
+
+  `POST /api/deals/:id/reports` Requires an `x-actor-id` header identifying the caller.
 order: 800
 method: POST
 url: '{{baseUrl}}/api/deals/:id/reports'

@@ -1,5 +1,9 @@
 $kind: http-request
 name: '4. Commit Deal'
+description: |-
+  End-to-end happy-path step: 4. Commit Deal. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/listings/:id/deals` Requires an `x-actor-id` header identifying the caller.
 order: 400
 method: POST
 url: '{{baseUrl}}/api/listings/:id/deals'

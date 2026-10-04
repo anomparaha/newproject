@@ -1,5 +1,9 @@
 $kind: http-request
 name: '1. Actors'
+description: |-
+  Setup step (1. Actors) that seeds baseline demo data used by the other folders. Run the whole `0. Setup` folder after every `npm run seed:reset`, because seeding mints fresh IDs.
+
+  `GET /api/demo/actors`
 order: 100
 method: GET
 url: '{{baseUrl}}/api/demo/actors'

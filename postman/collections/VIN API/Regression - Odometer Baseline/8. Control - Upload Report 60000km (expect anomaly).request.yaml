@@ -1,5 +1,9 @@
 $kind: http-request
 name: '8. Control - Upload Report (60000 km) expect anomaly'
+description: |-
+  Odometer-baseline regression step: 8. Control - Upload Report (60000 km) expect anomaly. Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/deals/:id/reports` Requires an `x-actor-id` header identifying the caller.
 order: 800
 method: POST
 url: '{{baseUrl}}/api/deals/:id/reports'

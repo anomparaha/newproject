@@ -1,5 +1,9 @@
 $kind: http-request
 name: '1. Setup - Load Demo Actors'
+description: |-
+  End-to-end happy-path step: 1. Setup - Load Demo Actors. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `GET /api/demo/actors`
 order: 100
 method: GET
 url: '{{baseUrl}}/api/demo/actors'

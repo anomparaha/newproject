@@ -1,5 +1,9 @@
 $kind: http-request
 name: '2a. Register Inspector'
+description: |-
+  End-to-end happy-path step: 2a. Register Inspector. Runs in order to take a listing from creation through funded escrow, inspection, acceptance, handover, and vehicle release.
+
+  `POST /api/actors`
 order: 210
 method: POST
 url: '{{baseUrl}}/api/actors'

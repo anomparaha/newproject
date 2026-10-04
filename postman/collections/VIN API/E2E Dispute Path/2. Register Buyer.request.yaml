@@ -1,5 +1,9 @@
 $kind: http-request
 name: '2. Register Buyer'
+description: |-
+  End-to-end dispute-path step: 2. Register Buyer. Runs in order to drive a deal into a dispute and an arbiter-ordered buyer refund.
+
+  `POST /api/actors`
 order: 200
 method: POST
 url: '{{baseUrl}}/api/actors'

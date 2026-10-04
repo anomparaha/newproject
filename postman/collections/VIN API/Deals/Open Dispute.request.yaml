@@ -1,5 +1,9 @@
 $kind: http-request
 name: Open Dispute
+description: |-
+  A party to the deal opens a dispute, which freezes the escrow until an arbiter rules.
+
+  `POST /api/deals/:id/disputes` Requires an `x-actor-id` header identifying the caller.
 order: 7000
 method: POST
 url: '{{baseUrl}}/api/deals/:id/disputes'
@@ -18,3 +22,13 @@ body:
       "openedBy": "{{actorId}}",
       "reason": "The odometer reading is below the documented inspection baseline for this VIN."
     }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));
+      pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));
+      if (pm.response.code < 300) {
+        const b = pm.response.json();
+        pm.test('has dispute', () => pm.expect(b).to.have.property('dispute'));
+      }

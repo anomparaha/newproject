@@ -1,5 +1,9 @@
 $kind: http-request
 name: '7. Control - Fund Deal'
+description: |-
+  Odometer-baseline regression step: 7. Control - Fund Deal. Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/deals/:id/fund` Requires an `x-actor-id` header identifying the caller.
 order: 700
 method: POST
 url: '{{baseUrl}}/api/deals/:id/fund'

@@ -1,8 +1,18 @@
 $kind: http-request
 name: List Affiliations
+description: |-
+  List the affiliations recorded for an actor.
+
+  `GET /api/actors/:id/affiliations` — no authentication required. Returns the actor's affiliations.
 order: 7000
 method: GET
 url: '{{baseUrl}}/api/actors/:id/affiliations'
 pathVariables:
   - key: id
     value: '{{actorId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));
+      pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));

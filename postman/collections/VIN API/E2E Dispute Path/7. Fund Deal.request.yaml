@@ -1,5 +1,9 @@
 $kind: http-request
 name: '7. Fund Deal'
+description: |-
+  End-to-end dispute-path step: 7. Fund Deal. Runs in order to drive a deal into a dispute and an arbiter-ordered buyer refund.
+
+  `POST /api/deals/:id/fund` Requires an `x-actor-id` header identifying the caller.
 order: 700
 method: POST
 url: '{{baseUrl}}/api/deals/:id/fund'

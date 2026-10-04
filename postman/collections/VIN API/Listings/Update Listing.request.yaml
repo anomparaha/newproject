@@ -1,5 +1,9 @@
 $kind: http-request
 name: Update Listing
+description: |-
+  Update an existing listing (price, shipping terms, status, etc.).
+
+  `PATCH /api/listings/:id` Requires an `x-actor-id` header identifying the caller.
 order: 4000
 method: PATCH
 url: '{{baseUrl}}/api/listings/:id'
@@ -21,3 +25,13 @@ body:
       "odometerKm": 42050,
       "photoHashes": ["{{sha256}}"]
     }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('no server error', () => pm.expect(pm.response.code).to.be.below(500));
+      pm.test('json response', () => pm.expect(pm.response.headers.get('Content-Type') || '').to.include('application/json'));
+      if (pm.response.code < 300) {
+        const b = pm.response.json();
+        pm.test('object body', () => pm.expect(b).to.be.an('object'));
+      }

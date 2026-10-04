@@ -1,5 +1,9 @@
 $kind: http-request
 name: '6. Control - Commit Deal'
+description: |-
+  Odometer-baseline regression step: 6. Control - Commit Deal. Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/listings/:id/deals` Requires an `x-actor-id` header identifying the caller.
 order: 600
 method: POST
 url: '{{baseUrl}}/api/listings/:id/deals'

@@ -1,5 +1,9 @@
 $kind: http-request
 name: '13. Reset - Upload Report (60000 km) baseline not reset'
+description: |-
+  Odometer-baseline regression step: 13. Reset - Upload Report (60000 km) baseline not reset. Proves a VIN's highest recorded odometer cannot be reset by relisting the same car at a lower reading.
+
+  `POST /api/deals/:id/reports` Requires an `x-actor-id` header identifying the caller.
 order: 1300
 method: POST
 url: '{{baseUrl}}/api/deals/:id/reports'
