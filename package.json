@@ -16,7 +16,7 @@
     "seed:reset": "tsx services/api/src/seed.ts --reset",
     "typecheck": "npm run typecheck --workspace @vin/shared && npm run typecheck --workspace @vin/api && npm run typecheck --workspace @vin/web",
     "reset:db": "rm -f .data/vin.db*",
-    "test": "npx tsx --test packages/shared/tests/*.test.ts",
+    "test": "npx tsx --test packages/shared/tests/*.test.ts services/api/tests/*.test.ts",
     "smoke": "tsx services/api/src/smoke.ts",
     "collection:run": "node tools/collection-runner.mjs",
     "verify": "npm run build:shared && npm run typecheck && npm test && npm run seed:reset && npm run smoke"

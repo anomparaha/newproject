@@ -1,0 +1,36 @@
+$kind: http-request
+name: '12. Resolve Dispute Again (expect 409)'
+description: |-
+  Regression guard: resolving a dispute that is already resolved must be rejected with `409 INVALID_TRANSITION`, not crash with a `500`. This re-sends the same ruling from step 10 against the now-resolved dispute.
+
+  Guards the restored guard clause in `services/api/src/routes/deals.ts`:
+  `if (String(dispute.state) !== 'open') { return c.json({ error: { code: 'INVALID_TRANSITION', ... } }, 409); }`
+
+  `POST /api/disputes/:id/resolve` Requires an `x-actor-id` header identifying the caller.
+order: 1200
+method: POST
+url: '{{baseUrl}}/api/disputes/:id/resolve'
+pathVariables:
+  - key: id
+    value: '{{dspDisputeId}}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: x-actor-id
+    value: '{{dspArbiterId}}'
+body:
+  type: json
+  content: |-
+    {
+      "arbiterId": "{{dspArbiterId}}",
+      "outcome": "refund_buyer",
+      "refundedAmount": "9000",
+      "arbiterNote": "Regression probe: this dispute is already resolved; expect a 409 rejection."
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('already-resolved dispute is rejected with 409', () => pm.expect(pm.response.code, pm.response.text()).to.eql(409));
+      const b = pm.response.json();
+      pm.test('error code is INVALID_TRANSITION', () => pm.expect(b.error && b.error.code).to.eql('INVALID_TRANSITION'));
