@@ -614,6 +614,11 @@ describe('vin-anchor', () => {
   });
 
   it('5. inspection funds can release first while vehicle funds stay locked', async () => {
+    // The workshop's token account is not empty: the test setup minted it an
+    // opening balance and test 2 locked the bond out of it, so the release is
+    // checked as a delta (the caller passes a platform fee of zero, so the
+    // inspector receives the full inspection leg).
+    const inspectorBefore = (await getAccount(provider.connection, inspectorToken)).amount;
     await program.methods
       .releaseLeg(LEG_INSPECTION, new anchor.BN(INSPECTION_AMOUNT.toString()), hash(21), new anchor.BN(0))
       .accounts({
@@ -628,7 +633,8 @@ describe('vin-anchor', () => {
       .signers([relayer])
       .rpc();
 
-    assert.equal((await getAccount(provider.connection, inspectorToken)).amount, INSPECTION_AMOUNT);
+    const inspectorAfter = (await getAccount(provider.connection, inspectorToken)).amount;
+    assert.equal(inspectorAfter - inspectorBefore, INSPECTION_AMOUNT);
     assert.equal((await getAccount(provider.connection, vaultPda(deal, LEG_VEHICLE))).amount, VEHICLE_AMOUNT);
   });
 
