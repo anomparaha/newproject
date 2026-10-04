@@ -1,5 +1,8 @@
 # Menjalankan build + test Anchor di mesin lokal
 
+> Untuk koleksi Postman (regresi API lewat `npm run collection:run`), lihat
+> `docs/COLLECTION.md`.
+
 Panduan singkat untuk menjalankan hal yang sama dengan pipeline
 `.github/workflows/anchor.yml` (build program SBF, build IDL, lalu seluruh
 test suite terhadap validator lokal) di komputer sendiri.

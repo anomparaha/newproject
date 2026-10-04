@@ -37,3 +37,57 @@ jobs:
 
       - name: Production build of the frontend
         run: npm run build --workspace @vin/web
+
+  # The flow folders of the Postman collection (postman/collections/VIN API) are
+  # the API regression suite: they walk the happy path, the dispute path, and
+  # the odometer-baseline cases against a live server. The runner
+  # (tools/collection-runner.mjs) executes the exported YAML directly, so the
+  # same folders that run in Postman also run here.
+  collection:
+    name: API regression (Postman flows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the shared domain package
+        run: npm run build:shared
+
+      - name: Seed a fresh database
+        run: npm run seed:reset
+
+      # The folders register their own actors, but they need a running server.
+      # `nohup` keeps it alive across steps; the readiness loop turns a server
+      # that never starts into an error with a log instead of a wall of failed
+      # requests.
+      - name: Start the API
+        run: |
+          set -euo pipefail
+          nohup npx tsx services/api/src/index.ts > /tmp/vin-api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8080/api/meta/policy > /dev/null; then
+              echo "API is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the API did not come up within 60s"
+          tail -30 /tmp/vin-api.log
+          exit 1
+
+      - name: Run the flow folders (Happy Path, Dispute Path, Odometer Regression)
+        run: npm run collection:run
+
+      - name: Show the API log when the flow folders fail
+        if: failure()
+        run: |
+          [ -s /tmp/vin-api.log ] || exit 0
+          tail -50 /tmp/vin-api.log | sed 's/^/::error::/'
+          exit 0

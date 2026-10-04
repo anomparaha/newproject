@@ -14,15 +14,16 @@ name: Anchor (Solana program)
 #
 # Pinning Rust 1.79 because Solana v1.18.26 shipped it was therefore fatal:
 # getrandom, block-buffer and friends ask for the 2024 edition and the build
-# stopped during metadata, before a line of the program was compiled. Solana and
-# Rust now come from stable, so both cargos belong to the same generation.
+# stopped during metadata, before a line of the program was compiled.
+#
+# The two versions below are pinned to the toolchain that last built and tested
+# this program successfully - the run reports them as ::notice:: lines
+# (rustc 1.99.0, solana-cli 4.3.0). Both cargos therefore belong to the same
+# generation, and a new stable release cannot move the build until these are
+# bumped on purpose.
 #
 # The Anchor CLI cannot be compiled by a current Rust either, so it comes from
 # the prebuilt binary published with the release tag.
-#
-# TODO: pin both to the exact versions this run reports. The version-reporting
-# step prints them, and they belong in these two variables once they are known
-# to build the program.
 #
 # Reading a failure back is part of the job. The raw log of a workflow run and
 # the artifacts it uploads are served from hosts that some networks cannot
@@ -40,8 +41,8 @@ on:
       - '.github/workflows/anchor.yml'
 
 env:
-  SOLANA_VERSION: stable
-  RUST_VERSION: stable
+  SOLANA_VERSION: v4.3.0
+  RUST_VERSION: 1.99.0
   ANCHOR_VERSION: '0.30.1'
 
 jobs:

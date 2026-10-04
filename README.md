@@ -76,7 +76,16 @@ npm run dev:web     # http://0.0.0.0:3000
 
 # Core rules tests
 npm test
+
+# API regression: the Postman flow folders, run without the Postman app
+# (with the API from step 3 still running)
+npm run collection:run
 ```
+
+`npm run collection:run` executes the `E2E Happy Path`, `E2E Dispute Path`, and
+`Regression - Odometer Baseline` folders of the collection in
+`postman/collections/VIN API`; see `docs/COLLECTION.md` (Indonesian) for
+variants and for how to prove a regression folder is red on pre-fix code.
 
 The frontend calls the backend through relative `/api/*` routes forwarded by the Next rewrite
 (`apps/web/next.config.ts`), so the browser never calls `localhost` directly.

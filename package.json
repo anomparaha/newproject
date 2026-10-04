@@ -18,9 +18,13 @@
     "reset:db": "rm -f .data/vin.db*",
     "test": "npx tsx --test packages/shared/tests/*.test.ts",
     "smoke": "tsx services/api/src/smoke.ts",
+    "collection:run": "node tools/collection-runner.mjs",
     "verify": "npm run build:shared && npm run typecheck && npm test && npm run seed:reset && npm run smoke"
   },
   "engines": {
     "node": ">=22.5"
+  },
+  "devDependencies": {
+    "yaml": "^2.9.1"
   }
 }
