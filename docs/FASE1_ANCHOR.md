@@ -29,7 +29,7 @@ properti). Fase 1 memindahkan aturan yang sudah tetap itu ke Rust, bukan menemuk
 | `set_authorities` | admin | ganti relayer/arbiter/treasury |
 | `register_actor` / `revoke_actor` | admin | attestation hash; aktor dicabut tidak boleh buka deal |
 | `lock_bond` / `return_bond` | aktor / admin | jaminan stablecoin |
-| `open_deal` | relayer | membuat dua vault terpisah dalam satu transaksi |
+| `open_deal` + `open_deal_vaults` | pembeli | dua instruksi dalam satu transaksi: akun deal, lalu dua vault terpisah |
 | `fund_leg` | pembeli | dipanggil dua kali (kendaraan, inspeksi) |
 | `freeze_deal` | pihak mana pun | membekukan deal |
 | `release_leg` / `refund_leg` | relayer | menolak deal beku |

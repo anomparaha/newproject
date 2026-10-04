@@ -48,11 +48,14 @@ PENDAFTARAN (sekali per aktor)
                                                        (wajib sebelum menerima order)
 
 DEAL (per transaksi kendaraan)
-  pembeli  ── open_deal(vin_hash, vehicle_amt, inspection_amt) ─►
+  pembeli  ── open_deal(vin_hash, vehicle_amt, inspection_amt) ──────►
                 ├─ DealAccount dibuat
+                └─ syarat: bengkel.bond_locked > 0, tak ada aktor revoked, program tidak paused
+  pembeli  ── open_deal_vaults() ───────────────────────────────────►
                 ├─ vehicle_vault dibuat     (kosong)
                 └─ inspection_vault dibuat  (kosong)
-                syarat: bengkel.bond_locked > 0, tak ada aktor revoked, program tidak paused
+                (dua instruksi dikirim dalam satu transaksi, jadi deal tidak
+                 pernah ada di chain tanpa vault-nya)
 
   pembeli  ── fund_leg(0, vehicle_amt) ─────► vehicle_vault    (USDC pembeli → vault)
   pembeli  ── fund_leg(1, inspection_amt) ──► inspection_vault (USDC pembeli → vault)

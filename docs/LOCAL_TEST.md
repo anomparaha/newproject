@@ -88,13 +88,9 @@ programs/vin-anchor/node_modules/.bin/ts-mocha \
 Seluruh keluaran `anchor test --skip-build` (atau bagian ini saja):
 
 1. baris ringkasan `X passing` / `Y failing`;
-2. blok diagnostik sementara di awal output — baris `program id:`, `IDL
-   openDeal accounts`, `actor buyer/seller/inspector`, `openDeal (fails)
-   metas`, dan semua baris `probe (...)` beserta `Left:` / `Right:` pada
-   kegagalan;
-3. baris `initializeConfig logs: ...` — di dalamnya ada penanda build
-   (`vin-anchor build marker ...`) yang membuktikan binary yang diuji memang
-   hasil build terakhir, bukan sisa build lama.
+2. kalau ada yang gagal: blok pesan errornya, termasuk baris `Left:` /
+   `Right:` pada kegagalan `ConstraintSeeds` dan log program yang menyertai
+   instruksi yang gagal.
 
 ## 6. Kalau ada masalah
 
@@ -104,4 +100,4 @@ Seluruh keluaran `anchor test --skip-build` (atau bagian ini saja):
 | Validator gagal start, `Blockhash not found` | Runner/mesin lambat: ulangi, atau naikkan `[test] startup_wait` di `Anchor.toml`. |
 | `Cannot find module '../../../target/idl/vin_anchor.json'` | Langkah IDL (§3) belum jalan atau menulis ke path lain. |
 | `provider wallet` tidak ditemukan | `solana-keygen new -o ~/.config/solana/id.json` (§1). |
-| Ingin tahu isi binary yang dipakai | `strings target/deploy/vin_anchor.so \| grep 'vin-anchor build marker'` (penanda ini hanya ada selama diagnosa). |
+| Hasil test aneh / tidak bisa dipercaya | Periksa dulu apakah ada fungsi yang melewati budget frame SBF: `grep -c "overflows the maximum allowed frame space" <log build>`. Kalau ada, build tetap sukses tapi perilaku runtime-nya *undefined*; perbaiki dulu sebelum mengejar bug lain. CI menolak menjalankan test bila menemukannya. |

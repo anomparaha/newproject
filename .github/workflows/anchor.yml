@@ -187,16 +187,6 @@ jobs:
             fi
             ls -l "$f"
           done
-          # TEMPORARY DIAGNOSTIC. The test suite behaves as if the validator were
-          # running a program other than this source; the marker is a string the
-          # program prints from `initialize_config`, so counting it here says
-          # whether the deployed binary was built from this commit. The SBF
-          # artifact is listed too: `anchor build` copies it into target/deploy,
-          # and the copy's mtime hides how old the binary itself is.
-          echo "sha256 (deployed): $(sha256sum target/deploy/vin_anchor.so)"
-          ls -l --time-style=full-iso target/sbf-solana-solana/release/vin_anchor.so 2>/dev/null || echo "no SBF artifact path"
-          echo "marker occurrences: $(strings target/deploy/vin_anchor.so | grep -c 'vin-anchor build marker' || true)"
-          strings target/deploy/vin_anchor.so | grep 'vin-anchor build marker' || echo "no marker string in the binary"
 
       # The SBF VM gives every call a fixed stack window, and a frame that
       # overruns it quietly overwrites its caller's frame: undefined behaviour
@@ -355,24 +345,6 @@ jobs:
             sed -e 's/\x1b\[[0-9;]*m//g' "$log" | tail -150
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          exit 0
-
-      # TEMPORARY DIAGNOSTIC. Prints the code the `Accounts` derive generates
-      # for `OpenDeal::try_accounts`, which is where the `deal` seeds check
-      # lives: the seeds it derives from, the check it runs, and the values it
-      # puts in the error. Remove this step with the rest of the diagnostic.
-      - name: "TEMPORARY DIAGNOSTIC: expand the Accounts macro for OpenDeal"
-        if: always()
-        run: |
-          cd programs/vin-anchor
-          RUSTC_BOOTSTRAP=1 cargo rustc --profile=check --lib -- -Zunpretty=expanded > /tmp/expanded.rs 2> /tmp/expanded-err.txt || true
-          echo "expanded lines: $(wc -l < /tmp/expanded.rs)"
-          echo "--- the deal init group ---"
-          sed -n '6730,6900p' /tmp/expanded.rs | sed -e 's/^/EXPDEAL: /'
-          echo "--- the buyer/deal comparison in context ---"
-          grep -n "buyer.key() == deal.key()" /tmp/expanded.rs | head -3
-          n=$(grep -n "buyer.key() == deal.key()" /tmp/expanded.rs | head -1 | cut -d: -f1)
-          sed -n "$((n>25 ? n-25 : 1)),$((n+15))p" /tmp/expanded.rs | sed -e 's/^/EXPCMP: /'
           exit 0
 
       - name: Run the Anchor tests

@@ -54,7 +54,7 @@ Yang on-chain hanya **hash dan alamat**. VIN penuh, foto, laporan, dan identitas
 | 4 | `revoke_actor` | admin | aktor dicabut tidak bisa membuka deal/mengunci jaminan |
 | 5 | `lock_bond` | aktor | jaminan dalam stablecoin, masuk bond vault milik PDA aktor |
 | 6 | `return_bond` | relayer | jaminan kembali setelah deal bersih, dengan hash alasan |
-| 7 | `open_deal` | pembeli | bengkel **wajib** sudah mengunci jaminan; membuat dua vault sekaligus |
+| 7 | `open_deal` + `open_deal_vaults` | pembeli | bengkel **wajib** sudah mengunci jaminan; dua instruksi dalam satu transaksi (akun deal, lalu dua vault) |
 | 8 | `fund_leg` | pembeli | dana masuk tidak boleh melebihi jumlah yang dikunci (`OverFunded`) |
 | 9 | `freeze_deal` | pembeli / penjual / bengkel | membekukan deal; selain ketiganya ditolak |
 | 10 | `release_leg` | relayer | ditolak bila beku/selesai/dibatalkan; tidak boleh melebihi sisa leg; fee ≤ bps; fee hanya ke `fee_treasury` |

@@ -1,15 +1,17 @@
 /**
-  * Anchor tests for the VIN program.
+ * Anchor tests for the VIN program.
  *
-  * STATUS: not yet run in this development environment because the Solana/Rust
-  * toolchain is unavailable (the sandbox only reaches npm/PyPI/GitHub; static.
-  * rust-lang.org and crates.io are blocked). Run `anchor test` on a machine or CI
-  * has the toolchain — see .github/workflows/anchor.yml.
+ * They need the Solana/Rust toolchain: run `anchor test` on a machine that has
+ * it (see docs/LOCAL_TEST.md) or let the CI job run them
+ * (.github/workflows/anchor.yml). The two-instruction transaction in the deal
+ * tests exists because the single fourteen-account instruction overflowed the
+ * SBF stack frame budget; the CI job refuses to run the tests when any
+ * function overruns that budget, because such a build is undefined behaviour
+ * even though it compiles.
  *
-  * These tests lock the SAME invariants as the TypeScript ledger model
-  * (packages/shared/src/vault-spec.ts), which is property-tested here.
-  * So once the program actually compiles, we compare two implementations
-  * from the same rules — not testing one implementation in isolation.
+ * These tests lock the SAME invariants as the TypeScript ledger model
+ * (packages/shared/src/vault-spec.ts), which is property-tested separately, so
+ * the two implementations are compared against the same rules.
  */
 
 import * as anchor from '@coral-xyz/anchor';
@@ -74,29 +76,6 @@ describe('vin-anchor', () => {
   const notePda = (deal: PublicKey, seq: bigint) =>
     pda([Buffer.from('note'), deal.toBuffer(), Buffer.from(new anchor.BN(seq.toString()).toArray('le', 8))]);
 
-  // TEMPORARY DIAGNOSTIC helper. A failed instruction arrives with the program's
-  // own logs attached, and those logs are the only place where the on-chain
-  // comparison (for example the two addresses a seeds check compared) is
-  // visible. Remove it with the diagnostic block in `before`.
-  const dumpError = (label: string, e: unknown) => {
-    const err = e as {
-      logs?: string[];
-      message?: string;
-      error?: { errorCode?: { code?: string; number?: number }; errorMessage?: string };
-    };
-    const code = err.error && err.error.errorCode ? `${err.error.errorCode.code}(${err.error.errorCode.number})` : 'no error code';
-    console.log(`${label}: ${code} ${(err.error && err.error.errorMessage) || err.message || String(e)}`);
-    // TEMPORARY DIAGNOSTIC. The same message as one line with the
-    // workflow-command prefix, so the addresses a failing seeds check compared
-    // become annotations of the test step and survive without the raw log.
-    console.log(
-      `::warning::${label}: ${String((e as Error).message ?? e).replace(/\s*\n\s*/g, ' | ').slice(0, 400)}`,
-    );
-    for (const line of err.logs || []) {
-      console.log(`  | ${line}`);
-    }
-  };
-
   let deal: PublicKey;
   let buyerToken: PublicKey;
   let sellerToken: PublicKey;
@@ -121,21 +100,6 @@ describe('vin-anchor', () => {
     // token account owner, so a bond cannot be paid from the buyer balance).
     await mintTo(provider.connection, buyer, usdcMint, inspectorToken, buyer, 1_000_000_000n);
 
-    // TEMPORARY DIAGNOSTIC. The program prints a marker when it initializes the
-    // config, so the logs of this call name the build the validator is running.
-    // An earlier run read them back with `getTransaction` and got nothing, so
-    // they are taken from a simulation of the same instruction instead: a
-    // simulation needs no landed transaction. Remove it with the rest.
-    const initTx = await program.methods
-      .initializeConfig(arbiter.publicKey, relayer.publicKey, feeTreasury.publicKey, 100, 500)
-      .accounts({ admin: admin.publicKey, usdcMint, disputeFund })
-      .transaction();
-    initTx.feePayer = admin.publicKey;
-    initTx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
-    const initSim = await provider.connection.simulateTransaction(initTx);
-    const initLogs = initSim.value.logs || [];
-    console.log(`initializeConfig simulate logs (${initLogs.length}):`);
-    initLogs.forEach((line) => console.log(`  | ${line}`));
     await program.methods
       .initializeConfig(arbiter.publicKey, relayer.publicKey, feeTreasury.publicKey, 100, 500)
       .accounts({ admin: admin.publicKey, usdcMint, disputeFund })
@@ -151,326 +115,6 @@ describe('vin-anchor', () => {
         .registerActor(role, hash(role))
         .accounts({ payer: admin.publicKey, wallet, actor: actorPda(wallet) })
         .rpc();
-    }
-
-    // TEMPORARY DIAGNOSTIC. Calls the program's own diagnostic entry point,
-    // which logs what it derives from the actor and deal seeds and whether an
-    // empty seed changes that result. It runs before any `openDeal` call and
-    // touches no state. Remove it with `debug_seeds` in the program.
-    try {
-      const dbgTx = await program.methods
-        .debugSeeds(vinHash)
-        .accounts({ buyer: buyer.publicKey, buyerActor: actorPda(buyer.publicKey) })
-        .transaction();
-      dbgTx.feePayer = admin.publicKey;
-      dbgTx.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
-      const dbgSim = await provider.connection.simulateTransaction(dbgTx);
-      const dbgLogs = dbgSim.value.logs || [];
-      console.log(`debug_seeds logs (${dbgLogs.length}):`);
-      dbgLogs.forEach((line) => console.log(`  | ${line}`));
-      console.log(
-        `client-side: find([actor,buyer]) ${actorPda(buyer.publicKey).toBase58()} | find([deal,vin,buyer]) ${dealPda(buyer.publicKey).toBase58()}`,
-      );
-    } catch (e) {
-      console.log(`debug_seeds could not be built or simulated: ${String(e)}`);
-    }
-
-    // TEMPORARY DIAGNOSTIC. `openDeal` is the only instruction whose seeds are
-    // read from other accounts (`buyer.key()`, `seller.key()`,
-    // `inspector.key()`), and it is the only one whose seeds check fails, so the
-    // question is what the program reads in each slot. This prints, once, after
-    // the accounts exist: every key the test holds, the IDL's own account list
-    // and seed definitions for `openDeal`, the stored fields of each actor
-    // account, and the account metas the client puts on the wire for the failing
-    // instruction next to a passing one. Remove it once `openDeal` passes.
-    const idlRaw = idl as unknown as {
-      address?: string;
-      instructions: Array<{ name: string; args?: Array<{ name: string; type: unknown }>; accounts: Array<{ name: string; pda?: unknown; address?: string }> }>;
-    };
-    console.log(`program id: client ${program.programId.toBase58()} | IDL address (declare_id) ${idlRaw.address}`);
-    // TEMPORARY DIAGNOSTIC. The client encodes the instruction arguments from
-    // these declarations, in this order, so they say what the program should
-    // read back. `openDeal`'s `vin_hash` is a 32-byte array; if this list says
-    // anything else, the bytes on the wire are not the bytes the program's
-    // `#[instruction(...)]` binding expects. The encoded instruction follows:
-    // it is the exact argument blob the program deserializes.
-    for (const nm of ['open_deal', 'openDeal', 'debug_seeds', 'debugSeeds']) {
-      const entry = idlRaw.instructions.find((i) => i.name === nm);
-      if (entry) console.log(`IDL ${nm} args: ${JSON.stringify(entry.args)}`);
-    }
-    try {
-      const wire = (program as unknown as { coder: { instruction: { encode: (name: string, args: Record<string, unknown>) => Buffer } } })
-        .coder.instruction.encode('openDeal', {
-          vinHash,
-          vehicleAmount: new anchor.BN(VEHICLE_AMOUNT.toString()),
-          inspectionAmount: new anchor.BN(INSPECTION_AMOUNT.toString()),
-        });
-      console.log(`openDeal wire (${wire.length} bytes): ${Buffer.from(wire).toString('hex')}`);
-    } catch (e) {
-      console.log(`openDeal wire could not be encoded: ${String(e)}`);
-    }
-    console.log(`wallets: admin ${admin.publicKey.toBase58()} | buyer ${buyer.publicKey.toBase58()} | seller ${seller.publicKey.toBase58()} | inspector ${inspector.publicKey.toBase58()}`);
-    console.log(`arbiter ${arbiter.publicKey.toBase58()} | relayer ${relayer.publicKey.toBase58()} | feeTreasury ${feeTreasury.publicKey.toBase58()}`);
-    console.log(`mint ${usdcMint.toBase58()} | tokens: buyer ${buyerToken.toBase58()} seller ${sellerToken.toBase58()} inspector ${inspectorToken.toBase58()} fee ${feeToken.toBase58()} | disputeFund ${disputeFund.toBase58()} | config ${configPda.toBase58()}`);
-    const openDealIdl = idlRaw.instructions.find((i) => i.name === 'openDeal' || i.name === 'open_deal');
-    const openDealAccounts = openDealIdl ? openDealIdl.accounts : [];
-    console.log(`IDL openDeal accounts (${openDealAccounts.length}):`);
-    openDealAccounts.forEach((a, i) => {
-      console.log(`  [${i}] ${a.name}${a.pda ? ' pda=' + JSON.stringify(a.pda) : ''}${a.address ? ' address=' + a.address : ''}`);
-    });
-    // The camelCased IDL the client actually resolves against. Its account list
-    // is the order the client puts on the wire, and its `pda` entries are the
-    // seed definitions the compiler read out of the program source.
-    const camelIdl = (program as unknown as {
-      idl: { instructions: Array<{ name: string; accounts: Array<{ name: string; isSigner?: boolean; isWritable?: boolean; pda?: unknown }> }> };
-    }).idl;
-    const camelOpenDeal = camelIdl.instructions.find((i) => i.name === 'openDeal') || camelIdl.instructions[0];
-    console.log(`client IDL openDeal accounts (${camelOpenDeal ? camelOpenDeal.accounts.length : 0}):`);
-    (camelOpenDeal ? camelOpenDeal.accounts : []).forEach((a, i) => {
-      console.log(`  [${i}] ${a.name} signer=${Boolean(a.isSigner)} writable=${Boolean(a.isWritable)}${a.pda ? ' pda=' + JSON.stringify(a.pda) : ''}`);
-    });
-    for (const [label, wallet] of [['buyer', buyer.publicKey], ['seller', seller.publicKey], ['inspector', inspector.publicKey]] as Array<[string, PublicKey]>) {
-      const addr = actorPda(wallet);
-      const [, canonicalBump] = PublicKey.findProgramAddressSync([Buffer.from('actor'), wallet.toBuffer()], program.programId);
-      const info = await provider.connection.getAccountInfo(addr);
-      // ActorAccount: 8 discriminator, wallet 32, role 1, attestation 32,
-      // revoked 1, bond_locked 8, bump 1 - so the wallet starts at byte 8, the
-      // bump is byte 82, and the account is 83 bytes long.
-      const storedBump = info && info.data.length > 82 ? info.data[82] : 'no account';
-      const storedWallet = info && info.data.length >= 40 ? new PublicKey(info.data.subarray(8, 40)).toBase58() : 'MISSING';
-      let derived = 'n/a';
-      if (typeof storedBump === 'number') {
-        try {
-          derived = PublicKey.createProgramAddressSync(
-            [Buffer.from('actor'), wallet.toBuffer(), Buffer.from([storedBump])],
-            program.programId,
-          ).toBase58();
-        } catch (e) {
-          derived = `ERR ${String(e)}`;
-        }
-      }
-      console.log(`actor ${label}: ${addr.toBase58()} | owner ${info ? info.owner.toBase58() : 'MISSING'} | len ${info ? info.data.length : 0} | storedWallet ${storedWallet} | storedBump ${storedBump} vs canonicalBump ${canonicalBump} | create(seeds, storedBump) ${derived}`);
-    }
-    const showMetas = async (label: string, ix: anchor.web3.TransactionInstruction, ixName: string) => {
-      const ixIdl = (program as unknown as { idl: { instructions: Array<{ name: string; accounts: Array<{ name: string }> }> } }).idl.instructions.find((i) => i.name === ixName);
-      console.log(`${label} metas (${ix.keys.length}):`);
-      ix.keys.forEach((key, i) => {
-        console.log(`  [${i}] ${ixIdl && ixIdl.accounts[i] ? ixIdl.accounts[i].name : 'EXTRA'} ${key.pubkey.toBase58()} signer=${key.isSigner} writable=${key.isWritable}`);
-      });
-    };
-    // The deal address test 1 uses, computed here so the instruction can be
-    // built before the test that assigns the shared `deal` variable runs.
-    const probeDeal = dealPda(buyer.publicKey);
-    console.log(`probeDeal (dealPda of the buyer) ${probeDeal.toBase58()}`);
-    const openDealAccountsStrict = (buyerKey: PublicKey) => ({
-      buyer: buyerKey,
-      buyerActor: actorPda(buyer.publicKey),
-      sellerActor: actorPda(seller.publicKey),
-      inspectorActor: actorPda(inspector.publicKey),
-      seller: seller.publicKey,
-      inspector: inspector.publicKey,
-      deal: probeDeal,
-      config: configPda,
-      systemProgram: anchor.web3.SystemProgram.programId,
-    });
-    try {
-      const ix = await program.methods
-        .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-        .accountsStrict(openDealAccountsStrict(buyer.publicKey))
-        .instruction();
-      await showMetas('openDeal (fails)', ix, 'openDeal');
-    } catch (e) {
-      console.log(`openDeal instruction could not be built: ${String(e)}`);
-    }
-    // Probe: same call, a different signer in the `buyer` slot. If the program
-    // derives the actor PDA from the account in that slot, the address it
-    // compares against moves with it. If the derived address stays the same,
-    // the seeds do not read that slot at all - which is the question this whole
-    // block exists to answer. The call is expected to fail; the failure is what
-    // carries the answer.
-    try {
-      await program.methods
-        .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-        .accountsStrict(openDealAccountsStrict(admin.publicKey))
-        .rpc();
-      console.log('probe (buyer slot = admin): the call unexpectedly succeeded');
-    } catch (e) {
-      dumpError('probe (buyer slot = admin)', e);
-    }
-    // Probe: the seller's actor in the `buyer_actor` slot. It is a real actor
-    // account with its own stored bump, so the address the program compares
-    // against says which account supplies the bump.
-    try {
-      await program.methods
-        .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-        .accountsStrict({
-          ...openDealAccountsStrict(buyer.publicKey),
-          buyerActor: actorPda(seller.publicKey),
-        })
-        .signers([buyer])
-        .rpc();
-      console.log('probe (buyer_actor = seller actor): the call unexpectedly succeeded');
-    } catch (e) {
-      dumpError('probe (buyer_actor = seller actor)', e);
-    }
-    // TEMPORARY DIAGNOSTIC. `Right` in a ConstraintSeeds error is the address
-    // the program derived for the seeds it holds. A wallet the test knows is put
-    // in the `buyer` slot below, so that address can be explained here instead of
-    // guessed at: every bump is tried for `[b"actor", wallet]` and the ones that
-    // reproduce it are printed. A match means the deployed program does read the
-    // slot and does use the stored bump, and names the bump it used. Remove this
-    // with the rest of the diagnostic block.
-    const seedsAddresses = (e: unknown): { left?: string; right?: string } => {
-      const logs = ((e as { logs?: string[] }).logs || []).map((line) => line.replace(/^Program log: /, '').trim());
-      const out: { left?: string; right?: string } = {};
-      logs.forEach((line, i) => {
-        if (line === 'Left:') out.left = (logs[i + 1] || '').trim();
-        if (line === 'Right:') out.right = (logs[i + 1] || '').trim();
-      });
-      return out;
-    };
-    const explainActorSeeds = (label: string, wallet: PublicKey, right?: string) => {
-      const canonical = PublicKey.findProgramAddressSync([Buffer.from('actor'), wallet.toBuffer()], program.programId);
-      const bumps: number[] = [];
-      for (let bump = 0; bump <= 255; bump += 1) {
-        try {
-          const candidate = PublicKey.createProgramAddressSync(
-            [Buffer.from('actor'), wallet.toBuffer(), Buffer.from([bump])],
-            program.programId,
-          ).toBase58();
-          if (candidate === right) bumps.push(bump);
-        } catch (e) {
-          // The address is on the curve: not a valid bump for these seeds.
-        }
-      }
-      console.log(
-        `${label}: [b"actor", ${wallet.toBase58()}] canonical ${canonical[0].toBase58()} bump ${canonical[1]} | Right ${right || '(not printed)'} reproduced by bumps ${bumps.length ? bumps.join(', ') : 'NONE'}`,
-      );
-    };
-    for (const [label, altBuyer] of [
-      ['probe (buyer slot = seller)', seller],
-      ['probe (buyer slot = inspector)', inspector],
-    ] as Array<[string, Keypair]>) {
-      const altDeal = dealPda(altBuyer.publicKey);
-      try {
-        await program.methods
-          .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-          .accountsStrict({
-            ...openDealAccountsStrict(altBuyer.publicKey),
-            deal: altDeal,
-            vehicleVault: vaultPda(altDeal, LEG_VEHICLE),
-            inspectionVault: vaultPda(altDeal, LEG_INSPECTION),
-          })
-          .signers([altBuyer])
-          .rpc();
-        console.log(`${label}: the call unexpectedly succeeded`);
-      } catch (e) {
-        dumpError(label, e);
-        const { right } = seedsAddresses(e);
-        explainActorSeeds(label, altBuyer.publicKey, right);
-        explainActorSeeds(`${label} via the buyer wallet`, buyer.publicKey, right);
-      }
-    }
-    // TEMPORARY DIAGNOSTIC. Positive control: the inspector's actor account in
-    // the `buyer_actor` slot with the inspector's wallet in the `buyer` slot, so
-    // the account and the wallet agree. If the program reads that slot and the
-    // stored bump, every actor check passes here and the call gets as far as the
-    // handler's "the workshop holds no bond" rule. If it still reports
-    // `buyer_actor`, the derivation in the deployed binary does not use the slot
-    // at all. Remove it with the rest of the diagnostic.
-    try {
-      const controlDeal = dealPda(inspector.publicKey);
-      await program.methods
-        .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-        .accountsStrict({
-          ...openDealAccountsStrict(inspector.publicKey),
-          buyerActor: actorPda(inspector.publicKey),
-          deal: controlDeal,
-          vehicleVault: vaultPda(controlDeal, LEG_VEHICLE),
-          inspectionVault: vaultPda(controlDeal, LEG_INSPECTION),
-        })
-        .signers([inspector])
-        .rpc();
-      console.log('probe (buyer slot = inspector, buyer_actor = inspector actor): the call unexpectedly succeeded');
-    } catch (e) {
-      dumpError('probe (buyer slot = inspector, buyer_actor = inspector actor)', e);
-      const { right } = seedsAddresses(e);
-      explainActorSeeds('probe (inspector in the inspector slot)', inspector.publicKey, right);
-    }
-    // TEMPORARY DIAGNOSTIC. Two calls that differ only in the `vinHash`
-    // argument and, because the deal address is derived from it, the `deal`
-    // account. If the address the program derives does not move when the
-    // argument moves, the seeds the deployed program runs do not read the
-    // argument. If it moves but still misses the account the client computed,
-    // then the bytes the program reads are not the bytes the client sent - and
-    // the wire line printed above says what the client sent. Remove this with
-    // the rest of the diagnostic block.
-    const vinAlt = hash(9);
-    const dealAltProbe = pda([Buffer.from('deal'), Buffer.from(vinAlt), buyer.publicKey.toBuffer()]);
-    const probeRights: Record<string, string> = {};
-    for (const [label, vin, dealKey] of [
-      ['vin = hash(7)', vinHash, dealPda(buyer.publicKey)],
-      ['vin = hash(9)', vinAlt, dealAltProbe],
-    ] as Array<[string, number[], PublicKey]>) {
-      try {
-        await program.methods
-          .openDeal(vin, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
-          .accountsStrict({
-            ...openDealAccountsStrict(buyer.publicKey),
-            deal: dealKey,
-            vehicleVault: vaultPda(dealKey, LEG_VEHICLE),
-            inspectionVault: vaultPda(dealKey, LEG_INSPECTION),
-          })
-          .signers([buyer])
-          .rpc();
-        console.log(`probe (${label}): the call unexpectedly succeeded`);
-      } catch (e) {
-        dumpError(`probe (${label})`, e);
-        probeRights[label] = seedsAddresses(e).right || '(not printed)';
-      }
-    }
-    console.log(
-      `vin probe: client dealPda(hash(7)) ${dealPda(buyer.publicKey).toBase58()} | client dealPda(hash(9)) ${dealAltProbe.toBase58()} | program Right ${probeRights['vin = hash(7)']} vs ${probeRights['vin = hash(9)']} | Right moved with the argument: ${probeRights['vin = hash(7)'] !== probeRights['vin = hash(9)']}`,
-    );
-    try {
-      const ix = await program.methods
-        .slashBond(new anchor.BN(BOND_AMOUNT.toString()), hash(51))
-        .accounts({
-          arbiter: arbiter.publicKey,
-          actor: actorPda(inspector.publicKey),
-          bondVault: bondVaultPda(actorPda(inspector.publicKey)),
-          disputeFund,
-        })
-        .instruction();
-      await showMetas('slashBond (passes)', ix, 'slashBond');
-    } catch (e) {
-      console.log(`slashBond instruction could not be built: ${String(e)}`);
-    }
-  });
-
-  // TEMPORARY DIAGNOSTIC. Runs the same seeds expression `open_deal` uses in
-  // the smallest possible `init` struct, so a bad derivation can be told apart
-  // from a context whose account struct is too large for the frame it is built
-  // in. Prints one line with the workflow-command prefix on both outcomes, so
-  // the result is readable from the run's annotations. Remove it with the
-  // `debug_init` instruction in the program.
-  it('0. TEMPORARY DIAGNOSTIC: a minimal init struct derives the deal PDA', async () => {
-    const buyer2 = Keypair.generate();
-    const sig = await provider.connection.requestAirdrop(buyer2.publicKey, 2 * LAMPORTS_PER_SOL);
-    await provider.connection.confirmTransaction(sig);
-    const expected = pda([Buffer.from('deal'), Buffer.from(vinHash), buyer2.publicKey.toBuffer()]);
-    try {
-      await program.methods
-        .debugInit(vinHash)
-        .accounts({ buyer: buyer2.publicKey, deal: expected })
-        .signers([buyer2])
-        .rpc();
-      console.log(`::warning::debug_init: expected ${expected.toBase58()} -- instruction SUCCEEDED`);
-    } catch (e) {
-      console.log(
-        `::warning::debug_init: expected ${expected.toBase58()} -- FAILED: ${String((e as Error).message ?? e).replace(/\s*\n\s*/g, ' | ').slice(0, 300)}`,
-      );
-      throw e;
     }
   });
 
@@ -499,7 +143,6 @@ describe('vin-anchor', () => {
         .rpc();
       assert.fail('open_deal must be rejected while the workshop holds no bond');
     } catch (e) {
-      dumpError('test 1: open_deal with an unbonded workshop', e);
       assert.match(String((e as Error).message ?? e), /BondRequired|Bond/);
     }
   });
