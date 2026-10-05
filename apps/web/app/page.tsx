@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Metric, Notice, StateChip } from '@/components/Chips';
+import { VehiclePhoto } from '@/components/VehiclePhoto';
 import { dateTime, formatAmount, percent, relative } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -31,13 +32,30 @@ export default async function DashboardPage() {
   }
 
   const liveListings = listings.listings.filter((l) => l.status !== 'completed');
+  const openListings = listings.listings.filter((l) => l.status === 'listed');
   const completedNotes = listings.listings.filter((l) => l.status === 'completed').length;
 
   return (
     <div className="space-y-7">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Corridor dashboard {corridor ? `${corridor.originCountry} → ${corridor.destinationCountry}` : ''}</h1>
-        <p className="max-w-3xl text-sm leading-relaxed text-mist-400">{policy.whatItIs}</p>
+      <header className="card relative overflow-hidden p-6">
+        <div className="relative z-10 max-w-3xl space-y-3">
+          <span className="chip border-signal/40 text-signal">Proof stage · escrow + inspection enforced</span>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Cross-border vehicles, inspected and escrowed
+            {corridor ? <span className="text-mist-400"> — {corridor.originCountry} → {corridor.destinationCountry}</span> : null}
+          </h1>
+          <p className="text-sm leading-relaxed text-mist-300">{policy.whatItIs}</p>
+          <div className="flex flex-wrap gap-2 pt-1 text-xs text-mist-400">
+            <span className="chip">VIN-locked listings</span>
+            <span className="chip">Two-leg escrow</span>
+            <span className="chip">Odometer anomaly watch</span>
+            <span className="chip">Receipt NFTs on completion</span>
+          </div>
+        </div>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-signal/10 blur-3xl"
+        />
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -119,6 +137,51 @@ export default async function DashboardPage() {
             </div>
           </dl>
           <p className="mt-3 text-xs text-mist-400">{tokenMetrics?.note ?? policy.tokenMetricsNote}</p>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium">Featured units</h2>
+          <Link href="/listings" className="text-xs text-signal hover:underline">
+            view all
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {openListings.slice(0, 3).map((listing) => (
+            <Link
+              key={listing.id}
+              href={`/listing/${listing.id}`}
+              className="card overflow-hidden transition-colors hover:border-ink-600"
+            >
+              <VehiclePhoto
+                seed={listing.id}
+                alt={`${listing.make} ${listing.model}`}
+                className="h-40 w-full border-0"
+                rounded="rounded-none"
+              />
+              <div className="space-y-2 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-medium leading-tight">
+                      {listing.make} {listing.model}
+                    </div>
+                    <div className="text-xs text-mist-400">
+                      {listing.year} · {listing.odometerKm?.toLocaleString('en-US') ?? '-'} km
+                    </div>
+                  </div>
+                  <StateChip state={listing.status === 'listed' ? 'draft' : listing.status} />
+                </div>
+                <div className="flex items-center justify-between border-t border-ink-800 pt-2">
+                  <span className="text-sm font-semibold tabular-nums">
+                    {formatAmount(listing.priceAmount, listing.priceCurrency)}
+                  </span>
+                  <span className="text-xs text-mist-400">{listing.location}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+          {openListings.length === 0 ? <p className="text-sm text-mist-400">No open listings right now.</p> : null}
         </div>
       </section>
 

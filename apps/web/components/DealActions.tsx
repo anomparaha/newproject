@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { Deal, Dispute, VinEvent } from '@vin/shared';
-import { usePersona } from './PersonaProvider';
+import { useSession } from './SessionProvider';
 import { Notice } from './Chips';
 import { formatAmount, randomSha256, shortHash } from '@/lib/format';
 
@@ -56,7 +56,7 @@ function nextStep(deal: Deal, dispute: Dispute | null, events: VinEvent[]): stri
 }
 
 export function DealActions({ deal, dispute, events }: Props) {
-  const { actor } = usePersona();
+  const { actor } = useSession();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
@@ -428,7 +428,7 @@ export function DealActions({ deal, dispute, events }: Props) {
 
       {dispute?.state === 'open' && !isArbiter ? (
         <Notice tone="danger" title={`Dispute opened by ${shortHash(dispute.openedBy, 8, 4)}`}>
-          Select the Arbiter persona in the left panel to rule on the dispute.
+          Sign in as the arbiter to rule on the dispute.
         </Notice>
       ) : null}
     </div>

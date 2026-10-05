@@ -8,7 +8,7 @@ import { serializeActor, serializeBond, serializeListing, serializeNote, seriali
 import { BONDS, CANDIDATE_CORRIDORS, PILOT_CORRIDOR } from '../policy.js';
 
 /** A simple rate for corridor value thresholds. Production: a licensed rate source plus audit. */
-const USD_RATES: Record<string, number> = { USD: 1, USDC: 1, IDR: 1 / 16_200 };
+const USD_RATES: Record<string, number> = { USD: 1, USDC: 1, AED: 1 / 3.6725 };
 
 export function listingRoutes(ctx: AppContext): Hono {
   const app = new Hono();

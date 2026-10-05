@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Notice, StateChip } from '@/components/Chips';
+import { VehiclePhoto } from '@/components/VehiclePhoto';
 import { formatAmount } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -44,10 +45,15 @@ export default async function ListingsPage() {
             {data.listings.map((listing) => (
               <tr key={listing.id}>
                 <td>
-                  <div className="font-medium">
-                    {listing.make} {listing.model}
+                  <div className="flex items-center gap-3">
+                    <VehiclePhoto seed={listing.id} alt={`${listing.make} ${listing.model}`} className="h-12 w-20 shrink-0" rounded="rounded-lg" />
+                    <div>
+                      <div className="font-medium">
+                        {listing.make} {listing.model}
+                      </div>
+                      <div className="text-xs text-mist-400">{listing.year} · {listing.odometerKm?.toLocaleString('en-US') ?? '-'} km</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-mist-400">{listing.year} · {listing.odometerKm?.toLocaleString('en-US') ?? '-'} km</div>
                 </td>
                 <td className="hash">{listing.vin}</td>
                 <td className="text-xs text-mist-300">{listing.location}</td>

@@ -28,7 +28,8 @@ test('money: minor-unit conversion never touches floats', () => {
   assert.equal(toMinorUnits('45000', 'USDC'), 45_000_000_000n);
   assert.equal(toMinorUnits('0.1', 'USDC'), 100_000n);
   assert.equal(fromMinorUnits(45_000_000_000n, 'USDC'), '45000.000000');
-  assert.equal(toMinorUnits('1250000', 'IDR'), 1_250_000n);
+  assert.equal(toMinorUnits('1250000', 'AED'), 125_000_000n);
+  assert.equal(fromMinorUnits(125_000_000n, 'AED'), '1250000.00');
 });
 
 test('money: 0.1 + 0.2 stays exact', () => {

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Notice, StateChip } from '@/components/Chips';
 import { CommitDealForm } from '@/components/CommitDealForm';
+import { VehiclePhoto } from '@/components/VehiclePhoto';
 import { dateTime, formatAmount, shortHash } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,23 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-6">
+          <section className="card overflow-hidden">
+            <VehiclePhoto
+              seed={listing.id}
+              alt={`${listing.make} ${listing.model}`}
+              className="h-56 w-full border-0 sm:h-72"
+              rounded="rounded-none"
+            />
+            <div className="grid gap-2 p-4 sm:grid-cols-3">
+              <VehiclePhoto seed={`${listing.id}-b`} alt={`${listing.make} ${listing.model} side view (placeholder)`} className="h-20 w-full" rounded="rounded-lg" />
+              <VehiclePhoto seed={`${listing.id}-c`} alt={`${listing.make} ${listing.model} interior view (placeholder)`} className="h-20 w-full" rounded="rounded-lg" />
+              <VehiclePhoto seed={`${listing.id}-d`} alt={`${listing.make} ${listing.model} detail view (placeholder)`} className="h-20 w-full" rounded="rounded-lg" />
+            </div>
+            <p className="px-4 pb-4 text-[0.68rem] leading-relaxed text-mist-400">
+              Photos shown are placeholders: this listing stores photo HASHES only, and evidence upload is not built yet.
+              The hashes are below; the files stay off-chain.
+            </p>
+          </section>
           <section className="card p-4">
             <h2 className="text-sm font-medium">What the listing locks</h2>
             <dl className="mt-3 grid gap-3 sm:grid-cols-2">

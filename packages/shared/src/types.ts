@@ -112,7 +112,7 @@ export interface EventPayload {
   model?: string;
   year?: number;
   priceAmount?: string;
-  /** Free-form currency code (USDC, IDR, USD, ...). Vehicle money is stablecoin or fiat only. */
+  /** Free-form currency code (USDC, AED, USD, ...). Vehicle money is stablecoin or fiat only. */
   priceCurrency?: string;
   shippingTerms?: string;
   photoHashes?: string[];
@@ -213,7 +213,7 @@ export interface Listing {
   odometerKm: number | null;
   location: string;
   priceAmount: string;
-  priceCurrency: 'USDC' | 'IDR' | 'USD';
+  priceCurrency: 'USDC' | 'AED' | 'USD';
   shippingTerms: string;
   photoHashes: string[];
   status: ListingStatus;

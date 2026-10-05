@@ -146,3 +146,20 @@ button.ghost:hover {
   border-color: var(--color-signal);
   color: var(--color-signal);
 }
+
+/* Skeleton shimmer is not needed, but the sign-in dialog and photo cards are
+   the first components with depth: give cards a hover state and keep images
+   from flashing white while they decode. */
+img {
+  background-color: var(--color-ink-850);
+}
+
+dialog::backdrop {
+  backdrop-filter: blur(4px);
+}
+
+/* The sign-in dialog is rendered as a plain overlay; make sure nothing behind
+   it can scroll on small screens. */
+body:has([role='dialog']) {
+  overflow: hidden;
+}

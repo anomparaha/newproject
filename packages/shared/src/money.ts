@@ -1,11 +1,11 @@
 /**
  * Money: amounts as decimal strings (never floats), fees, and bond decay.
- * Every calculation uses BigInt with a scale of 6 decimals (USDC) or 0 (IDR).
+ * Every calculation uses BigInt with a scale of 6 decimals (USDC) or 2 (USD, AED).
  */
 
 export class MoneyError extends Error {}
 
-const DECIMALS: Record<string, number> = { USDC: 6, USD: 2, IDR: 0 };
+const DECIMALS: Record<string, number> = { USDC: 6, USD: 2, AED: 2 };
 
 export function decimalsFor(currency: string): number {
   const d = DECIMALS[currency.toUpperCase()];

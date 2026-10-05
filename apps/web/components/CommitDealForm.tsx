@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Listing } from '@vin/shared';
-import { usePersona } from './PersonaProvider';
+import { useSession } from './SessionProvider';
 import { Notice } from './Chips';
 import { formatAmount } from '@/lib/format';
 import type { InspectorEntry } from '@/lib/api';
 
 export function CommitDealForm({ listing }: { listing: Listing }) {
-  const { actor } = usePersona();
+  const { actor } = useSession();
   const router = useRouter();
   const [inspectors, setInspectors] = useState<InspectorEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -17,7 +17,7 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
   const [form, setForm] = useState({
     inspectorId: '',
     inspectionFeeAmount: '150',
-    escrowCurrency: 'USDC' as 'USDC' | 'IDR',
+    escrowCurrency: 'USDC' as 'USDC' | 'AED',
     shippingPaidBy: 'buyer' as 'buyer' | 'seller',
     shippingAmount: '1200',
     inspectionDeadlineHours: 72,
@@ -37,7 +37,7 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
 
   if (!actor || actor.role !== 'buyer') {
     return (
-      <Notice tone="info" title="Select the Buyer persona to lock a deal">
+      <Notice tone="info" title="Sign in as the buyer to lock a deal">
         The buyer picks the workshop, locks the price, and funds the escrow.
       </Notice>
     );

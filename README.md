@@ -92,14 +92,16 @@ The frontend calls the backend through relative `/api/*` routes forwarded by the
 
 ### Walk the flow as three people
 
-The sidebar has **demo personas**. Pick an actor, then work through the steps:
+The sidebar has a **Sign in** button (Google / X / connect wallet, Gmgn style). Those buttons are a
+UI-first mock: the API authenticates with the `x-actor-id` header, so the dialog also exposes a **demo
+binding** picker that binds this browser to one actor. Pick an actor, then work through the steps:
 
 1. **Buyer** → open a listing → *Lock deal & fund escrow*. Two separate escrows are created.
-2. **Nusantara Inspection Workshop** → upload a report (the *example* button fills in a sha256 hash).
+2. **Apex Vehicle Inspections** → upload a report (the *example* button fills in a sha256 hash).
    To see an anomaly: enter an odometer reading lower than the seller's record for that VIN.
 3. **Buyer** → accept the report (the anomaly warning must be ticked when one exists).
 4. **Buyer & Seller** → confirm handover → **release vehicle funds** → the receipt is recorded.
-5. For a dispute: pick the **Arbiter** and rule. Also try choosing the **Sahabat Motor** workshop
+5. For a dispute: sign in as the **Arbiter** and rule. Also try choosing the **Crescent Motors** workshop
    when locking a deal — it is affiliated with the seller and **blocked** by the system.
 
 ## 4. Rules the machine enforces (not just intentions in a document)

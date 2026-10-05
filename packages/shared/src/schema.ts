@@ -10,7 +10,7 @@ import { z } from 'zod';
 
 export const zBase58 = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'Invalid base58 Solana address');
 export const zSha256Hex = z.string().regex(/^[0-9a-f]{64}$/, 'Hash must be 64 hex characters (sha256)');
-export const zCurrency = z.enum(['USDC', 'IDR', 'USD']);
+export const zCurrency = z.enum(['USDC', 'AED', 'USD']);
 export const zAmount = z.string().regex(/^\d+(\.\d+)?$/, 'Amount must be a positive decimal string');
 export const zCountryCode = z.string().length(2).transform((v) => v.toUpperCase());
 
@@ -48,7 +48,7 @@ export const zCommitDeal = z.object({
   shippingPaidBy: z.enum(['buyer', 'seller']),
   shippingAmount: zAmount,
   inspectionFeeAmount: zAmount,
-  escrowCurrency: z.enum(['USDC', 'IDR']).default('USDC'),
+  escrowCurrency: z.enum(['USDC', 'AED']).default('USDC'),
   inspectionDeadlineHours: z.number().int().min(6).max(720).default(72),
   handoverTerms: z.string().min(4).max(400),
 });
