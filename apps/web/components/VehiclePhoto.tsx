@@ -5,11 +5,11 @@ import { useState } from 'react';
 /**
  * Vehicle photo with a deterministic mock fallback.
  *
- * Listings currently carry photo HASHES, not files: evidence upload is not
- * built yet, so there is no URL to render. Showing a placeholder image makes
- * the marketplace readable while that gap exists, and the badge on the image
- * says plainly that it is a placeholder. When real evidence exists, pass `src`
- * and the fallback disappears.
+ * Evidence is content-addressed: pass a `hash` and the image is loaded from
+ * `GET /api/evidence/:hash`, or pass an explicit `src`. When neither resolves
+ * (or the fetch fails), a deterministic placeholder keeps the marketplace
+ * readable and the badge says plainly that it is a placeholder. Demo listings
+ * still carry hashes with no uploaded bytes, so they fall back gracefully.
  */
 
 const MOCK_PHOTOS: [string, ...string[]] = ['/mock/vehicle-1.jpg', '/mock/vehicle-2.jpg', '/mock/vehicle-3.jpg'];
@@ -24,6 +24,7 @@ export function mockPhotoFor(seed: string): string {
 export function VehiclePhoto({
   seed,
   src,
+  hash,
   alt,
   className = '',
   rounded = 'rounded-xl',
@@ -31,14 +32,16 @@ export function VehiclePhoto({
 }: {
   seed: string;
   src?: string;
+  hash?: string;
   alt: string;
   className?: string;
   rounded?: string;
   badge?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
-  const actual = !failed && src ? src : mockPhotoFor(seed);
-  const isMock = !src || failed;
+  const resolved = src ?? (hash ? `/api/evidence/${hash}` : undefined);
+  const actual = !failed && resolved ? resolved : mockPhotoFor(seed);
+  const isMock = !resolved || failed;
 
   return (
     <div className={`relative overflow-hidden bg-subtle ${rounded} ${className}`}>

@@ -27,7 +27,9 @@ menambah fitur atau menambah utilitas token.
       `/auth/challenge` dan `/auth/verify`, 429 + `Retry-After`) dan cookie sesi httpOnly
       (`vin_session`, SameSite=Lax, Secure di prod) sudah ada. **Sisa:** embedded wallet untuk login sosial.
 - [ ] Antrean pekerjaan asinkron (email/WhatsApp, penarikan dana, rekonsiliasi).
-- [ ] Unggah berkas bukti ke object storage + penyimpanan hash otomatis.
+- [x] Unggah berkas bukti ke object storage + penyimpanan hash otomatis — `POST /api/evidence`
+      (server menghitung sha256, content-addressed) dan `GET /api/evidence/:hash`. `ObjectStore` punya
+      implementasi lokal (filesystem) dan memory (test), siap diganti S3/R2. `VehiclePhoto` bisa render by-hash.
 
 ---
 

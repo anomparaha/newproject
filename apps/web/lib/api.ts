@@ -3,6 +3,15 @@ import type { Actor, Corridor, CorridorMetrics, Deal, Dispute, Escrow, Inspectio
 /** Server-side only (React Server Components). The browser always uses the relative /api/* routes. */
 const API_ORIGIN = process.env.VIN_API_URL ?? 'http://127.0.0.1:8080';
 
+/**
+ * Browser-reachable URL for a piece of stored evidence, addressed by its sha256
+ * hash. Returns null when there is no hash, so callers can fall back to a
+ * placeholder. The bytes are served by `GET /api/evidence/:hash`.
+ */
+export function evidenceUrl(hash: string | null | undefined): string | null {
+  return hash ? `/api/evidence/${hash}` : null;
+}
+
 async function apiGet<T>(path: string): Promise<T | null> {
   try {
     const res = await fetch(`${API_ORIGIN}${path}`, { cache: 'no-store' });

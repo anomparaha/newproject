@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { MockEscrowProvider } from './escrow.js';
+import type { ObjectStore } from './storage.js';
 import { actorIdForToken } from './auth.js';
 
 /**
@@ -17,6 +18,8 @@ import { actorIdForToken } from './auth.js';
 export interface AppContext {
   db: DatabaseSync;
   escrow: MockEscrowProvider;
+  /** Content-addressed storage for evidence files (photos, dashboards, PDFs). */
+  store: ObjectStore;
 }
 
 export function isDemoMode(): boolean {

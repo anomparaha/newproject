@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { DatabaseSync } from 'node:sqlite';
 import { MoneyError } from '@vin/shared';
 import { MockEscrowProvider } from './escrow.js';
+import { LocalObjectStore, type ObjectStore } from './storage.js';
 import type { AppContext } from './context.js';
 import { metaRoutes } from './routes/meta.js';
 import { authRoutes } from './routes/auth.js';
@@ -12,9 +13,10 @@ import { corridorRoutes } from './routes/corridors.js';
 import { listingRoutes } from './routes/listings.js';
 import { dealRoutes } from './routes/deals.js';
 import { reputationRoutes } from './routes/reputation.js';
+import { evidenceRoutes } from './routes/evidence.js';
 
-export function createApp(db: DatabaseSync): Hono {
-  const ctx: AppContext = { db, escrow: new MockEscrowProvider(db) };
+export function createApp(db: DatabaseSync, opts: { store?: ObjectStore } = {}): Hono {
+  const ctx: AppContext = { db, escrow: new MockEscrowProvider(db), store: opts.store ?? new LocalObjectStore() };
   const app = new Hono();
 
   app.use(
@@ -37,6 +39,7 @@ export function createApp(db: DatabaseSync): Hono {
   api.route('/', listingRoutes(ctx));
   api.route('/', dealRoutes(ctx));
   api.route('/', reputationRoutes(ctx));
+  api.route('/', evidenceRoutes(ctx));
   app.route('/api', api);
 
   app.get('/', (c) =>
