@@ -32,7 +32,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <div className="mt-4 rounded-xl border border-ink-800 bg-ink-900/40 p-3">
                   <AccountButton />
                   <p className="mt-2 text-[0.62rem] leading-relaxed text-mist-400">
-                    Wallet-first identity. Demo mode binds this browser to an actor until Sign-In With Solana is enabled.
+                    Wallet-first identity: connecting a wallet signs a one-time challenge that the API verifies. The
+                    demo binding is a local shortcut for the seeded actors and signs nothing.
                   </p>
                 </div>
                 <div className="mt-5">

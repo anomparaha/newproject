@@ -2,9 +2,11 @@
 
 Dasar: `http://localhost:8080/api` (produksi: domain API internal; frontend memakai rewrite `/api/*`).
 
-**Autentikasi demo:** header `x-actor-id: <actor_id>`.
-**Produksi:** Sign-In With Solana (nonce ditandatangani dompet) + attestation identitas;
-header di atas harus dihapus.
+**Autentikasi:** Sign-In With Solana. Wallet menandatangani nonce sekali pakai, lalu setiap
+permintaan menulis membawa `Authorization: Bearer <token>`.
+**Demo:** header `x-actor-id: <actor_id>` masih berlaku selama `VIN_DEMO_MODE ≠ false`
+(untuk seed, smoke test, dan koleksi Postman). Saat `VIN_DEMO_MODE=false` header itu ditolak.
+Detail: `docs/SIWS.md`.
 
 Semua respons error berformat:
 
@@ -107,12 +109,27 @@ curl -s -X POST $API/listings/$LISTING/deals -H 'content-type: application/json'
 # 3. Pendanaan escrow, laporan, penerimaan, serah terima, pelepasan: lihat README §3
 ```
 
+## Autentikasi
+
+| Metode | Jalur | Keterangan |
+| --- | --- | --- |
+| POST | `/auth/challenge` | Terbitkan nonce + pesan untuk ditandatangani. Body: `{ walletAddress }` |
+| POST | `/auth/verify` | Verifikasi signature ed25519 → token sesi. Body: `{ walletAddress, nonce, signature, displayName?, role?, countryCode?, email? }` |
+| GET | `/auth/session` | Siapa pemilik token (`Authorization: Bearer`) |
+| POST | `/auth/signout` | Cabut token |
+| GET | `/auth/methods` | Metode login yang tersedia **dan jujur** status implementasinya |
+
+Kode error: `INVALID_ADDRESS`, `CHALLENGE_NOT_FOUND`, `CHALLENGE_USED`, `CHALLENGE_EXPIRED`,
+`ADDRESS_MISMATCH`, `BAD_SIGNATURE`, `PROFILE_REQUIRED` (wallet baru belum punya `displayName`;
+nonce **tidak** terbakar sehingga tanda tangan yang sama bisa dikirim ulang).
+
 ## Header khusus demo
 
 | Header | Arti | Aktif kapan |
 | --- | --- | --- |
+| `Authorization: Bearer <token>` | Identitas hasil SIWS | Selalu |
 | `x-demo-backdate-hours` | Menggeser waktu event agar metrik demo realistis | Hanya bila `VIN_DEMO_MODE ≠ false` |
-| `x-actor-id` | Identitas pemanggil | Mode demo |
+| `x-actor-id` | Identitas pemanggil tanpa tanda tangan | Hanya mode demo |
 
 ## Environment
 
@@ -121,6 +138,9 @@ curl -s -X POST $API/listings/$LISTING/deals -H 'content-type: application/json'
 | `PORT` | `8080` | Port API |
 | `HOST` | `0.0.0.0` | Bind address |
 | `VIN_DB_PATH` | `<repo>/.data/vin.db` | Lokasi basis data SQLite |
-| `VIN_DEMO_MODE` | aktif | `false` mematikan endpoint demo dan waktu simulasi |
+| `VIN_DEMO_MODE` | aktif | `false` mematikan endpoint demo, header `x-actor-id`, dan waktu simulasi |
+| `VIN_AUTH_DOMAIN` | header `Host` | Domain di dalam pesan SIWS |
+| `VIN_AUTH_URI` | `http(s)://<Host>` | URI di dalam pesan SIWS |
+| `VIN_SOLANA_CHAIN_ID` | `solana:localnet` | Chain ID di dalam pesan SIWS |
 | `VIN_API_URL` | `http://127.0.0.1:8080` | Dipakai Next.js untuk rewrite `/api/*` |
 | `VIN_ESCROW_PROGRAM_ID` | — | Diisi setelah program Anchor di-deploy |

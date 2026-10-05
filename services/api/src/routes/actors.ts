@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { zRegisterActor } from '@vin/shared';
 import { BONDS } from '../policy.js';
 import { all, get, json, newId, nowIso, run } from '../db.js';
-import { actorIdFromRequest, type AppContext } from '../context.js';
+import { resolveActorId, type AppContext } from '../context.js';
 import { serializeActor, serializeBond } from '../serialize.js';
 
 export function actorRoutes(ctx: AppContext): Hono {
@@ -130,7 +130,7 @@ export function actorRoutes(ctx: AppContext): Hono {
    */
   app.post('/actors/:id/verify', async (c) => {
     const actorId = c.req.param('id');
-    const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
+    const callerId = resolveActorId(c, ctx);
     const caller = callerId ? get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [callerId]) : undefined;
     if (!caller || caller.role !== 'curator') {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only a corridor curator may verify business identities' } }, 403);
@@ -164,7 +164,7 @@ export function actorRoutes(ctx: AppContext): Hono {
    */
   app.post('/actors/:id/affiliations', async (c) => {
     const actorId = c.req.param('id');
-    const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
+    const callerId = resolveActorId(c, ctx);
     const caller = callerId ? get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [callerId]) : undefined;
     if (!caller || (caller.role !== 'curator' && caller.id !== actorId)) {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only a corridor curator may record affiliations' } }, 403);

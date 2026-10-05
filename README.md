@@ -45,8 +45,11 @@ Stated up front, so nothing here is an overclaim:
   No real money moves anywhere yet.
 - **No NFT has been minted.** `note_completed` records `noteAssetId: null`, and the receipt metadata
   is already prepared to be Metaplex Core compatible (`GET /api/notes/:id/metadata`).
-- Authentication still uses the `x-actor-id` header (**demo only**). Production: Sign-In With Solana
-  plus an attestation.
+- Authentication: **Sign-In With Solana is implemented** (`services/api/src/auth.ts`). The wallet
+  signs a single-use nonce, the API verifies the ed25519 signature, and writes carry a session token
+  (`Authorization: Bearer`). The `x-actor-id` header still exists for the seeded demo flow and is
+  rejected the moment `VIN_DEMO_MODE=false`. Google/X buttons are UI-only: social login needs OAuth
+  credentials **and** an embedded-wallet provider, and neither exists yet.
 - No KYC/KYB vendor, no security audit, and no OJK licence yet (see `docs/LEGAL.md`).
 
 ## 2. Repo layout

@@ -6,6 +6,7 @@ import { MoneyError } from '@vin/shared';
 import { MockEscrowProvider } from './escrow.js';
 import type { AppContext } from './context.js';
 import { metaRoutes } from './routes/meta.js';
+import { authRoutes } from './routes/auth.js';
 import { actorRoutes } from './routes/actors.js';
 import { corridorRoutes } from './routes/corridors.js';
 import { listingRoutes } from './routes/listings.js';
@@ -20,13 +21,14 @@ export function createApp(db: DatabaseSync): Hono {
     '/api/*',
     cors({
       origin: (origin) => origin ?? '*',
-      allowHeaders: ['Content-Type', 'x-actor-id'],
+      allowHeaders: ['Content-Type', 'x-actor-id', 'Authorization'],
       allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
     }),
   );
 
   const api = new Hono();
   api.route('/', metaRoutes(ctx));
+  api.route('/', authRoutes(ctx));
   api.route('/', actorRoutes(ctx));
   api.route('/', corridorRoutes(ctx));
   api.route('/', listingRoutes(ctx));

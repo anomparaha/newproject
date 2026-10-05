@@ -2,29 +2,50 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { DemoActor } from '@/lib/api';
+import {
+  WalletUnavailableError,
+  connectWallet,
+  detectWallet,
+  signChallenge,
+} from '@/lib/solana-wallet';
 
 /**
- * Session shape for the web app.
+ * Session state for the web app.
  *
- * This is a LOCAL MOCK, deliberately. The backend still authenticates with the
- * `x-actor-id` header, so a button that pretended to sign a real challenge
- * would be a lie. What the picker really does is bind this browser to a demo
- * actor (the same thing the persona selector did), and it is labelled as such
- * in the UI. Swapping the body of `signIn` for Sign-In With Solana is the step
- * that turns this into real authentication.
+ * Two kinds of session exist and the UI must never blur them:
+ *
+ *  - `demoBinding: false` — a REAL Sign-In With Solana. The wallet signed a
+ *    single-use nonce, the API verified the ed25519 signature, and every write
+ *    carries the returned session token.
+ *  - `demoBinding: true` — a LOCAL binding to a seeded demo actor. No signature
+ *    exists; the API accepts it only while VIN_DEMO_MODE is on. This is what
+ *    makes the seeded flow clickable without a wallet extension.
+ *
+ * The token is kept in localStorage. For this demo that is acceptable; a
+ * production build should put it in an httpOnly cookie, and the comment here
+ * exists so nobody mistakes it for a deliberate choice.
  */
 export interface Session {
   /** How the user got in. */
   method: 'google' | 'x' | 'wallet' | 'demo';
-  /** Display label, e.g. a truncated wallet address or an email. */
+  /** Display label: a truncated wallet address, or a demo actor name. */
   label: string;
-  /** Wallet address when the method is `wallet`. */
+  /** Wallet address, when known. */
   address?: string;
-  /** Bound demo actor, when the sign-in was performed in demo mode. */
+  /** Bound demo actor, for demo bindings. */
   actorId?: string;
+  /** Session token from a verified SIWS sign-in. */
+  token?: string;
+  /** ISO expiry of the token. */
+  expiresAt?: string;
+  /** True when nothing was signed and the API's demo header is doing the work. */
+  demoBinding?: boolean;
 }
 
 const STORAGE_KEY = 'vin.session';
+
+export const truncateAddress = (address: string): string =>
+  address.length > 12 ? `${address.slice(0, 4)}…${address.slice(-4)}` : address;
 
 function readStored(): Session | null {
   if (typeof window === 'undefined') return null;
@@ -39,27 +60,49 @@ function readStored(): Session | null {
   }
 }
 
-/**
- * Mock wallet addresses. Real ones arrive when a wallet adapter is wired in;
- * until then the UI must not imply a key was used.
- */
-const MOCK_WALLETS = [
-  { name: 'Phantom', address: '4Nd1mYQ9oEcrMnbFh4pYZoGk1xLQ2v7Tn3sWq8CbZaKd' },
-  { name: 'Solflare', address: '7cVrFhx2TmPq9ZgL4yNbE6sDk3Wj8RpQ1uXvHa5MnTf' },
-  { name: 'Backpack', address: '9KpLmQ3xWbYt6RvN2sEfHo8JdUcZ5aGq4TnXh7MpBsVr' },
-];
+/** Thrown when a brand-new wallet needs a profile before an account can exist. */
+export class ProfileRequiredError extends Error {
+  constructor(
+    readonly walletId: string,
+    readonly address: string,
+    readonly challenge: { nonce: string; message: string },
+    readonly signature: string,
+  ) {
+    super('PROFILE_REQUIRED');
+  }
+}
 
-export const MOCK_TRUNCATE = (address: string): string =>
-  address.length > 12 ? `${address.slice(0, 4)}…${address.slice(-4)}` : address;
+export interface WalletSignInInput {
+  walletId: string;
+  /** Required only for wallets that have no account yet. */
+  role?: 'buyer' | 'seller' | 'inspector' | 'curator' | 'arbiter';
+  displayName?: string;
+  countryCode?: string;
+  email?: string;
+  /**
+   * Reuse an already-signed challenge instead of asking the wallet again. Set
+   * when a profile had to be collected: the server did not burn the nonce, so
+   * the user sees ONE wallet prompt for the whole sign-in.
+   */
+  reuse?: { address: string; nonce: string; signature: string };
+}
 
 interface SessionState {
   session: Session | null;
   ready: boolean;
-  /** True while a mock handshake animation runs. */
-  pending: Session['method'] | null;
-  signIn: (method: Session['method'], detail?: { label?: string; address?: string; actorId?: string }) => Promise<void>;
+  /** True while a sign-in handshake is in flight. */
+  pending: boolean;
+  /** The wallet chosen in the last attempt, so a retry can reuse it. */
+  lastWalletId: string | null;
+  signInWithWallet: (input: WalletSignInInput) => Promise<Session>;
+  signInWithDemoActor: (actor: DemoActor | null) => Promise<void>;
+  signInLocal: (method: 'google' | 'x') => Promise<void>;
   signOut: () => void;
-  /** Demo actors the API exposes (used to bind a browser to an actor). */
+  /** True when a wallet extension is actually present in this browser. */
+  walletAvailable: (walletId?: string) => boolean;
+  /** Headers that authenticate API writes. */
+  authHeaders: () => Record<string, string>;
+  /** Demo actors the API exposes (used by the demo binding picker). */
   actors: DemoActor[];
   /** The demo actor bound to this browser, resolved from the session. */
   actor: DemoActor | null;
@@ -67,26 +110,40 @@ interface SessionState {
   bindActor: (id: string | null) => void;
 }
 
-
 const SessionContext = createContext<SessionState>({
   session: null,
   ready: false,
-  pending: null,
-  signIn: async () => undefined,
+  pending: false,
+  lastWalletId: null,
+  signInWithWallet: async () => {
+    throw new Error('SessionProvider is not mounted');
+  },
+  signInWithDemoActor: async () => undefined,
+  signInLocal: async () => undefined,
   signOut: () => undefined,
+  walletAvailable: () => false,
+  authHeaders: () => ({}),
   actors: [],
   actor: null,
   bindActor: () => undefined,
 });
 
+function persist(session: Session | null): void {
+  if (typeof window === 'undefined') return;
+  if (session) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  else window.localStorage.removeItem(STORAGE_KEY);
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSessionState] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const [pending, setPending] = useState<Session['method'] | null>(null);
+  const [pending, setPending] = useState(false);
+  const [lastWalletId, setLastWalletId] = useState<string | null>(null);
   const [actors, setActors] = useState<DemoActor[]>([]);
 
   useEffect(() => {
-    setSessionState(readStored());
+    const stored = readStored();
+    setSessionState(stored);
     setReady(true);
   }, []);
 
@@ -109,55 +166,189 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback<SessionState['signIn']>(async (method, detail) => {
-    setPending(method);
-    try {
-      if (method === 'wallet') {
-        // A wallet handshake is interactive; keep a short delay so the button
-        // reads as "connecting" instead of "done before you looked".
-        await new Promise((resolve) => setTimeout(resolve, 650));
+  // A token can be revoked or expire while the tab is open. Ask the API who we
+  // are and drop the session if the answer is "nobody".
+  useEffect(() => {
+    const token = session?.token;
+    if (!ready || !token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session', { headers: { authorization: `Bearer ${token}` } });
+        if (res.ok || cancelled) return;
+        const next = { ...session } as Session;
+        delete next.token;
+        delete next.expiresAt;
+        delete next.actorId;
+        setSessionState(next.demoBinding ? next : null);
+        persist(next.demoBinding ? next : null);
+      } catch {
+        /* offline: keep the session; the next write will fail loudly */
       }
-      const label =
-        detail?.label ??
-        (method === 'wallet'
-          ? MOCK_TRUNCATE(detail?.address ?? MOCK_WALLETS[0]?.address ?? '')
-          : method === 'google'
-            ? 'you@gmail.com'
-            : method === 'x'
-              ? '@you'
-              : 'Demo actor');
-      const next: Session = { method, label, address: detail?.address, actorId: detail?.actorId };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, session?.token]);
+
+  const walletAvailable = useCallback((walletId = 'phantom') => Boolean(detectWallet(walletId)), []);
+
+  const signInWithWallet = useCallback<SessionState['signInWithWallet']>(async (input) => {
+    setPending(true);
+    setLastWalletId(input.walletId);
+    try {
+      let address: string;
+      let nonce: string;
+      let signature: string;
+      let message = '';
+
+      if (input.reuse) {
+        ({ address, nonce, signature } = input.reuse);
+      } else {
+        const connected = await connectWallet(input.walletId);
+        address = connected.address;
+
+        const challengeRes = await fetch('/api/auth/challenge', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ walletAddress: address }),
+        });
+        const challenge = (await challengeRes.json()) as {
+          nonce?: string;
+          message?: string;
+          error?: { message?: string };
+        };
+        if (!challengeRes.ok || !challenge.nonce || !challenge.message) {
+          throw new Error(challenge.error?.message ?? 'Could not start the sign-in challenge');
+        }
+        nonce = challenge.nonce;
+        message = challenge.message;
+        signature = await signChallenge(connected.provider, message);
+      }
+
+      const verifyRes = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          walletAddress: address,
+          nonce,
+          signature,
+          ...(input.displayName ? { displayName: input.displayName } : {}),
+          ...(input.role ? { role: input.role } : {}),
+          ...(input.countryCode ? { countryCode: input.countryCode } : {}),
+          ...(input.email ? { email: input.email } : {}),
+        }),
+      });
+      const verified = (await verifyRes.json()) as {
+        token?: string;
+        expiresAt?: string;
+        actor?: { id?: string };
+        error?: { code?: string; message?: string };
+      };
+
+      if (verifyRes.status === 400 && verified.error?.code === 'PROFILE_REQUIRED') {
+        // The nonce is NOT burned: the dialog can collect a display name and
+        // resubmit this exact signature.
+        throw new ProfileRequiredError(input.walletId, address, { nonce, message }, signature);
+      }
+      if (!verifyRes.ok || !verified.token || !verified.actor?.id) {
+        throw new Error(verified.error?.message ?? 'The signature was rejected');
+      }
+
+      const next: Session = {
+        method: 'wallet',
+        label: truncateAddress(address),
+        address,
+        actorId: verified.actor.id,
+        token: verified.token,
+        expiresAt: verified.expiresAt,
+        demoBinding: false,
+      };
       setSessionState(next);
+      persist(next);
+      return next;
     } finally {
-      setPending(null);
+      setPending(false);
     }
   }, []);
 
-  const signOut = useCallback(() => {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setSessionState(null);
+  const signInWithDemoActor = useCallback<SessionState['signInWithDemoActor']>(async (actor) => {
+    const next: Session = {
+      method: 'demo',
+      label: actor?.displayName ?? 'Demo browsing',
+      actorId: actor?.id,
+      demoBinding: true,
+    };
+    setSessionState(next);
+    persist(next);
   }, []);
+
+  const signInLocal = useCallback<SessionState['signInLocal']>(async (method) => {
+    const next: Session = {
+      method,
+      label: method === 'google' ? 'you@gmail.com' : '@you',
+      demoBinding: true,
+    };
+    setSessionState(next);
+    persist(next);
+  }, []);
+
+  const signOut = useCallback(() => {
+    const token = session?.token;
+    if (token) void fetch('/api/auth/signout', { method: 'POST', headers: { authorization: `Bearer ${token}` } });
+    persist(null);
+    setSessionState(null);
+  }, [session?.token]);
 
   const bindActor = useCallback((id: string | null) => {
     setSessionState((current) => {
       if (!id) {
-        // Keep the sign-in method, drop the bound actor.
         if (!current) return current;
         const { actorId: _dropped, ...rest } = current;
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+        persist(rest);
         return rest;
       }
-      const next: Session = { method: current?.method ?? 'demo', label: current?.label ?? 'Demo actor', address: current?.address, actorId: id };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      const next: Session = {
+        method: current?.method ?? 'demo',
+        label: current?.label ?? 'Demo actor',
+        address: current?.address,
+        token: current?.token,
+        expiresAt: current?.expiresAt,
+        demoBinding: current?.token ? false : true,
+        actorId: id,
+      };
+      persist(next);
       return next;
     });
   }, []);
 
   const actor = useMemo(() => actors.find((a) => a.id === session?.actorId) ?? null, [actors, session?.actorId]);
 
+  const authHeaders = useCallback((): Record<string, string> => {
+    if (session?.token) return { authorization: `Bearer ${session.token}` };
+    if (session?.actorId && session.demoBinding) return { 'x-actor-id': session.actorId };
+    return {};
+  }, [session?.token, session?.actorId, session?.demoBinding]);
+
   return (
-    <SessionContext.Provider value={{ session, ready, pending, signIn, signOut, actors, actor, bindActor }}>
+    <SessionContext.Provider
+      value={{
+        session,
+        ready,
+        pending,
+        lastWalletId,
+        signInWithWallet,
+        signInWithDemoActor,
+        signInLocal,
+        signOut,
+        walletAvailable,
+        authHeaders,
+        actors,
+        actor,
+        bindActor,
+      }}
+    >
       {children}
     </SessionContext.Provider>
   );
@@ -167,4 +358,4 @@ export function useSession(): SessionState {
   return useContext(SessionContext);
 }
 
-export { MOCK_WALLETS };
+export { WalletUnavailableError };

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { zCreateListing, vinScopeNotice, type EventPayload } from '@vin/shared';
 import { all, get, json, newId, nowIso, run } from '../db.js';
-import { actorIdFromRequest, type AppContext } from '../context.js';
+import { resolveActorId, type AppContext } from '../context.js';
 import { appendEvent, eventsForVin, latestOdometer, maxOdometer } from '../events.js';
 import { serializeActor, serializeBond, serializeListing, serializeNote, serializeReport } from '../serialize.js';
 import { BONDS, CANDIDATE_CORRIDORS, PILOT_CORRIDOR } from '../policy.js';
@@ -15,7 +15,7 @@ export function listingRoutes(ctx: AppContext): Hono {
 
   app.post('/listings', zValidator('json', zCreateListing), (c) => {
     const input = c.req.valid('json');
-    const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
+    const callerId = resolveActorId(c, ctx);
     const seller = get(ctx.db, 'SELECT * FROM actors WHERE id = ?', [input.sellerId]);
     if (!seller) return c.json({ error: { code: 'NOT_FOUND', message: 'Seller not found' } }, 404);
     if (seller.role !== 'seller') {
@@ -209,7 +209,7 @@ export function listingRoutes(ctx: AppContext): Hono {
     const listingId = c.req.param('id');
     const listing = get(ctx.db, 'SELECT * FROM listings WHERE id = ?', [listingId]);
     if (!listing) return c.json({ error: { code: 'NOT_FOUND', message: 'Listing not found' } }, 404);
-    const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
+    const callerId = resolveActorId(c, ctx);
     if (!callerId || callerId !== String(listing.seller_id)) {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only the seller may change their listing' } }, 403);
     }

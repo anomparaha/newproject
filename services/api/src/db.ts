@@ -233,6 +233,32 @@ export function migrate(db: DatabaseSync): void {
       last_computed_at TEXT NOT NULL
     );
 
+    -- SIWS challenges. Single-use: used_at is set only after the signature verifies.
+    CREATE TABLE IF NOT EXISTS auth_nonces (
+      nonce TEXT PRIMARY KEY,
+      wallet_address TEXT NOT NULL,
+      message TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      issued_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_nonces_wallet ON auth_nonces(wallet_address);
+
+    -- Session tokens are stored as sha256 hashes, never in the clear.
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      actor_id TEXT NOT NULL REFERENCES actors(id),
+      token_hash TEXT NOT NULL UNIQUE,
+      method TEXT NOT NULL,
+      wallet_address TEXT,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      last_used_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_actor ON sessions(actor_id);
+
     CREATE TABLE IF NOT EXISTS audit_log (
       id TEXT PRIMARY KEY,
       action TEXT NOT NULL,

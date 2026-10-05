@@ -9,7 +9,7 @@ import { formatAmount } from '@/lib/format';
 import type { InspectorEntry } from '@/lib/api';
 
 export function CommitDealForm({ listing }: { listing: Listing }) {
-  const { actor } = useSession();
+  const { actor, authHeaders } = useSession();
   const router = useRouter();
   const [inspectors, setInspectors] = useState<InspectorEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -49,7 +49,7 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
     try {
       const res = await fetch(`/api/listings/${listing.id}/deals`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-actor-id': actor!.id },
+        headers: { 'content-type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           buyerId: actor!.id,
           inspectorId: form.inspectorId,
@@ -68,7 +68,7 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
       if (form.fundNow) {
         const fundRes = await fetch(`/api/deals/${data.deal.id}/fund`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-actor-id': actor!.id },
+          headers: { 'content-type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ payerRef: actor!.id }),
         });
         if (!fundRes.ok) throw new Error('The deal is locked, but funding the escrow failed. Try funding it from the deal page.');

@@ -21,7 +21,10 @@ menambah fitur atau menambah utilitas token.
 **Belum ada**
 
 - [ ] Postgres + migrasi (skema sudah portabel).
-- [ ] Autentikasi Sign-In With Solana (SIWS) menggantikan header `x-actor-id`.
+- [x] Autentikasi Sign-In With Solana (SIWS) — nonce sekali pakai, verifikasi ed25519, token sesi
+      (hash sha256), sign-out mencabut token. Header `x-actor-id` hanya untuk demo dan mati saat
+      `VIN_DEMO_MODE=false`. Lihat `docs/SIWS.md`. **Sisa:** rate limiting, cookie httpOnly,
+      embedded wallet untuk login sosial.
 - [ ] Antrean pekerjaan asinkron (email/WhatsApp, penarikan dana, rekonsiliasi).
 - [ ] Unggah berkas bukti ke object storage + penyimpanan hash otomatis.
 

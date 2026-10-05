@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { zCreateCorridor, type CorridorMetrics } from '@vin/shared';
 import { all, get, json, newId, nowIso, run } from '../db.js';
-import { actorIdFromRequest, type AppContext } from '../context.js';
+import { resolveActorId, type AppContext } from '../context.js';
 import { CANDIDATE_CORRIDORS, PILOT_CORRIDOR, evaluateCorridorHealth } from '../policy.js';
 
 /** A second corridor does not open before the first one genuinely works. */
@@ -36,7 +36,7 @@ export function corridorRoutes(ctx: AppContext): Hono {
 
   /** Only a curator may open a corridor, and only when the existing one is healthy. */
   app.post('/corridors', zValidator('json', zCreateCorridor), (c) => {
-    const callerId = actorIdFromRequest(c.req.header('x-actor-id'));
+    const callerId = resolveActorId(c, ctx);
     const caller = callerId ? get(db, 'SELECT * FROM actors WHERE id = ?', [callerId]) : undefined;
     if (!caller || caller.role !== 'curator') {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only a corridor curator may open a new corridor' } }, 403);

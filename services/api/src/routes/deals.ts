@@ -20,7 +20,7 @@ import {
   zUploadReport,
 } from '@vin/shared';
 import { all, get, json, newId, nowIso, run } from '../db.js';
-import { actorIdFromRequest, demoBackdate, type AppContext } from '../context.js';
+import { demoBackdate, resolveActorId, type AppContext } from '../context.js';
 import { appendEvent, eventsForDeal, eventsForVin, maxOdometer } from '../events.js';
 import { serializeActor, serializeDeal, serializeDispute, serializeNote, serializeReport } from '../serialize.js';
 import { FEES } from '../policy.js';
@@ -417,7 +417,7 @@ export function dealRoutes(ctx: AppContext): Hono {
     if (!report) return c.json({ error: { code: 'NOT_FOUND', message: 'Report not found' } }, 404);
 
     const body = (await c.req.json().catch(() => ({}))) as { buyerId?: string };
-    const buyerId = body.buyerId ?? actorIdFromRequest(c.req.header('x-actor-id'));
+    const buyerId = body.buyerId ?? resolveActorId(c, ctx);
     if (!buyerId || buyerId !== String(deal.buyer_id)) {
       return c.json({ error: { code: 'FORBIDDEN', message: 'Only the buyer may accept the report' } }, 403);
     }

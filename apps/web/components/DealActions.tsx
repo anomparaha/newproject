@@ -15,13 +15,14 @@ interface Props {
 
 type Msg = { tone: 'safe' | 'danger' | 'info'; text: string } | null;
 
-async function post(path: string, body: unknown, actorId: string | null): Promise<Record<string, unknown>> {
+async function post(
+  path: string,
+  body: unknown,
+  authHeaders: Record<string, string>,
+): Promise<Record<string, unknown>> {
   const res = await fetch(path, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(actorId ? { 'x-actor-id': actorId } : {}),
-    },
+    headers: { 'content-type': 'application/json', ...authHeaders },
     body: JSON.stringify(body ?? {}),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -56,7 +57,7 @@ function nextStep(deal: Deal, dispute: Dispute | null, events: VinEvent[]): stri
 }
 
 export function DealActions({ deal, dispute, events }: Props) {
-  const { actor } = useSession();
+  const { actor, authHeaders } = useSession();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
@@ -128,7 +129,7 @@ export function DealActions({ deal, dispute, events }: Props) {
             <button
               className="primary"
               disabled={busy || !isBuyer}
-              onClick={() => act(() => post(`/api/deals/${deal.id}/fund`, { payerRef: deal.buyerId }, actor?.id ?? null), 'Escrow funded. Deal locked.')}
+              onClick={() => act(() => post(`/api/deals/${deal.id}/fund`, { payerRef: deal.buyerId }, authHeaders()), 'Escrow funded. Deal locked.')}
             >
               {isBuyer ? 'Fund the escrow now' : 'Only the buyer can fund the escrow'}
             </button>
@@ -227,7 +228,7 @@ export function DealActions({ deal, dispute, events }: Props) {
                         standardVersion: 'vin-report-v1',
                         checklist: report.checklist,
                       },
-                      actor?.id ?? null,
+                      authHeaders(),
                     ),
                   'Report uploaded. The hash is anchored in the event log.',
                 )
@@ -271,7 +272,7 @@ export function DealActions({ deal, dispute, events }: Props) {
                   return post(
                     `/api/deals/${deal.id}/reports/${reportId}/accept`,
                     { buyerId: deal.buyerId, acknowledgeAnomaly: accept.acknowledgeAnomaly },
-                    actor?.id ?? null,
+                    authHeaders(),
                   );
                 }, 'Report accepted. Inspection funds release to the workshop after the platform fee.')
               }
@@ -304,7 +305,7 @@ export function DealActions({ deal, dispute, events }: Props) {
                 disabled={busy || (!isBuyer && !isSeller)}
                 onClick={() =>
                   act(
-                    () => post(`/api/deals/${deal.id}/handover`, { actorId: actor?.id, method: handover.method }, actor?.id ?? null),
+                    () => post(`/api/deals/${deal.id}/handover`, { actorId: actor?.id, method: handover.method }, authHeaders()),
                     'Confirmation recorded.',
                   )
                 }
@@ -328,7 +329,7 @@ export function DealActions({ deal, dispute, events }: Props) {
               className="primary"
               disabled={busy}
               onClick={() =>
-                act(() => post(`/api/deals/${deal.id}/release-vehicle`, {}, actor?.id ?? null), 'Vehicle funds released. The completion receipt is recorded.')
+                act(() => post(`/api/deals/${deal.id}/release-vehicle`, {}, authHeaders()), 'Vehicle funds released. The completion receipt is recorded.')
               }
             >
               Release vehicle funds and record the receipt
@@ -358,7 +359,7 @@ export function DealActions({ deal, dispute, events }: Props) {
             <button
               className="primary"
               disabled={busy || !actor || disputeForm.reason.length < 10}
-              onClick={() => act(() => post(`/api/deals/${deal.id}/disputes`, { openedBy: actor?.id, reason: disputeForm.reason }, actor?.id ?? null), 'Dispute opened. The escrow is frozen.')}
+              onClick={() => act(() => post(`/api/deals/${deal.id}/disputes`, { openedBy: actor?.id, reason: disputeForm.reason }, authHeaders()), 'Dispute opened. The escrow is frozen.')}
             >
               Open a dispute
             </button>
@@ -414,7 +415,7 @@ export function DealActions({ deal, dispute, events }: Props) {
                         bondSlashedAmount: resolveForm.bondSlashedAmount || undefined,
                         arbiterNote: resolveForm.arbiterNote,
                       },
-                      actor?.id ?? null,
+                      authHeaders(),
                     ),
                   'Dispute resolved. The slashed bond goes to the dispute fund, not the team wallet.',
                 )

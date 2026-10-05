@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { SignInDialog } from '@/components/SignInDialog';
-import { useSession, MOCK_TRUNCATE } from '@/components/SessionProvider';
+import { useSession, truncateAddress } from '@/components/SessionProvider';
 
 const METHOD_LABEL: Record<string, string> = {
   google: 'Google',
@@ -38,7 +38,10 @@ export function AccountButton() {
               <span className="block truncate text-xs text-paper">{session.label}</span>
               <span className="block text-[0.62rem] uppercase tracking-wider text-mist-400">
                 {METHOD_LABEL[session.method] ?? session.method}
-                {session.address ? ` · ${MOCK_TRUNCATE(session.address)}` : ''}
+                {session.address ? ` · ${truncateAddress(session.address)}` : ''}
+              </span>
+              <span className={`block text-[0.6rem] ${session.demoBinding ? 'text-mist-400' : 'text-safe'}`}>
+                {session.demoBinding ? 'demo binding · no signature' : 'verified signature'}
               </span>
             </span>
           </button>
