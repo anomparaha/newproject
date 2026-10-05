@@ -35,6 +35,38 @@ export function bearerToken(authorization: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
+/** Name of the httpOnly cookie that carries the session token for browsers. */
+export const SESSION_COOKIE = 'vin_session';
+
+/** Read a single cookie value out of a raw Cookie header, without a dependency. */
+export function cookieToken(cookieHeader: string | undefined, name = SESSION_COOKIE): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    const raw = part.slice(eq + 1).trim();
+    if (!raw) return null;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return null;
+}
+
+/**
+ * The session token for a request, from either transport:
+ *  - `Authorization: Bearer <token>` (API clients, Postman), or
+ *  - the `vin_session` httpOnly cookie (browsers, so the token never has to live
+ *    in JavaScript-reachable storage).
+ * The header wins when both are present.
+ */
+export function sessionToken(c: { req: { header: (name: string) => string | undefined } }): string | null {
+  return bearerToken(c.req.header('authorization')) ?? cookieToken(c.req.header('cookie'));
+}
+
 /**
  * The single identity entry point used by every route.
  *
@@ -42,7 +74,7 @@ export function bearerToken(authorization: string | undefined): string | null {
  * token, that is who they are, regardless of any header they also send.
  */
 export function resolveActorId(c: { req: { header: (name: string) => string | undefined } }, ctx: AppContext): string | null {
-  const token = bearerToken(c.req.header('authorization'));
+  const token = sessionToken(c);
   if (token) {
     const actorId = actorIdForToken(ctx.db, token);
     if (actorId) return actorId;

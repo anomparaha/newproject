@@ -344,5 +344,135 @@ test('auth methods are reported honestly (social login is not built)', async () 
   assert.equal(byId.x.implemented, false);
 });
 
+test('siws: challenge requests are rate limited per wallet (429 + Retry-After)', async () => {
+  const prevMax = process.env.VIN_AUTH_CHALLENGE_MAX;
+  const prevWindow = process.env.VIN_AUTH_RATE_WINDOW_MS;
+  process.env.VIN_AUTH_CHALLENGE_MAX = '3';
+  process.env.VIN_AUTH_RATE_WINDOW_MS = '60000';
+  try {
+    const db = openDb(':memory:');
+    const app = createApp(db);
+    const wallet = newWallet();
+    const send = () =>
+      app.request('/api/auth/challenge', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ walletAddress: wallet.address }),
+      });
+
+    for (let i = 0; i < 3; i += 1) {
+      const ok = await send();
+      assert.equal(ok.status, 200, `challenge ${i + 1} should be allowed`);
+    }
+    const blocked = await send();
+    assert.equal(blocked.status, 429, 'the 4th challenge in the window is refused');
+    assert.equal(((await blocked.json()) as Record<string, any>).error?.code, 'RATE_LIMITED');
+    assert.ok(blocked.headers.get('retry-after'), 'a Retry-After header tells the client when to retry');
+  } finally {
+    if (prevMax === undefined) delete process.env.VIN_AUTH_CHALLENGE_MAX;
+    else process.env.VIN_AUTH_CHALLENGE_MAX = prevMax;
+    if (prevWindow === undefined) delete process.env.VIN_AUTH_RATE_WINDOW_MS;
+    else process.env.VIN_AUTH_RATE_WINDOW_MS = prevWindow;
+  }
+});
+
+test('siws: repeated verification attempts are rate limited (brute force is bounded)', async () => {
+  const prevMax = process.env.VIN_AUTH_VERIFY_MAX;
+  process.env.VIN_AUTH_VERIFY_MAX = '2';
+  try {
+    const db = openDb(':memory:');
+    const app = createApp(db);
+    const wallet = newWallet();
+    const challenge = await requestChallenge(app, wallet.address);
+
+    for (let i = 0; i < 2; i += 1) {
+      const attempt = await verify(app, {
+        walletAddress: wallet.address,
+        nonce: challenge.nonce,
+        signature: 'z'.repeat(40),
+        displayName: 'Guesser',
+      });
+      assert.notEqual(attempt.status, 429, `guess ${i + 1} is within the budget`);
+    }
+    const blocked = await verify(app, {
+      walletAddress: wallet.address,
+      nonce: challenge.nonce,
+      signature: 'z'.repeat(40),
+      displayName: 'Guesser',
+    });
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.json.error?.code, 'RATE_LIMITED');
+  } finally {
+    if (prevMax === undefined) delete process.env.VIN_AUTH_VERIFY_MAX;
+    else process.env.VIN_AUTH_VERIFY_MAX = prevMax;
+  }
+});
+
+test('siws: a verified sign-in sets an httpOnly session cookie that authenticates', async () => {
+  const db = openDb(':memory:');
+  const app = createApp(db);
+  const wallet = newWallet();
+  const challenge = await requestChallenge(app, wallet.address);
+
+  const res = await app.request('/api/auth/verify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      walletAddress: wallet.address,
+      nonce: challenge.nonce,
+      signature: wallet.sign(challenge.message),
+      displayName: 'Cookie Buyer',
+    }),
+  });
+  assert.equal(res.status, 201);
+  const setCookie = res.headers.get('set-cookie');
+  assert.ok(setCookie, 'a Set-Cookie header is present');
+  assert.match(setCookie!, /vin_session=/);
+  assert.match(setCookie!, /HttpOnly/i);
+  assert.match(setCookie!, /SameSite=Lax/i);
+
+  const token = /vin_session=([^;]+)/.exec(setCookie!)![1]!;
+  const bodyToken = String(((await res.json()) as Record<string, any>).token);
+  assert.equal(token, bodyToken, 'the cookie carries the same token as the body');
+
+  // The httpOnly cookie alone — no Authorization header — authenticates.
+  const session = await app.request('/api/auth/session', {
+    headers: { cookie: `vin_session=${token}` },
+  });
+  assert.equal(session.status, 200, 'the httpOnly cookie alone authenticates');
+});
+
+test('siws: sign-out clears the cookie and revokes the session', async () => {
+  const db = openDb(':memory:');
+  const app = createApp(db);
+  const wallet = newWallet();
+  const challenge = await requestChallenge(app, wallet.address);
+
+  const verifyRes = await app.request('/api/auth/verify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      walletAddress: wallet.address,
+      nonce: challenge.nonce,
+      signature: wallet.sign(challenge.message),
+      displayName: 'Signout Buyer',
+    }),
+  });
+  const token = /vin_session=([^;]+)/.exec(verifyRes.headers.get('set-cookie')!)![1]!;
+
+  const signout = await app.request('/api/auth/signout', {
+    method: 'POST',
+    headers: { cookie: `vin_session=${token}` },
+  });
+  assert.equal(signout.status, 200);
+  assert.equal(((await signout.json()) as Record<string, any>).revoked, true);
+  const cleared = signout.headers.get('set-cookie');
+  assert.ok(cleared && /vin_session=/.test(cleared), 'the cookie is overwritten on sign-out');
+  assert.match(cleared!, /Max-Age=0|Expires=/i);
+
+  const after = await app.request('/api/auth/session', { headers: { cookie: `vin_session=${token}` } });
+  assert.equal(after.status, 401, 'the revoked cookie no longer authenticates');
+});
+
 /** Keep the unused-import checker honest: DatabaseSync is used via openDb. */
 export type _DatabaseSync = DatabaseSync;

@@ -20,7 +20,10 @@ export function createApp(db: DatabaseSync): Hono {
   app.use(
     '/api/*',
     cors({
+      // Reflect the caller's origin (not a bare '*') so credentialed requests are
+      // allowed to carry the httpOnly session cookie.
       origin: (origin) => origin ?? '*',
+      credentials: true,
       allowHeaders: ['Content-Type', 'x-actor-id', 'Authorization'],
       allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
     }),

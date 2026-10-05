@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { setCookie, deleteCookie } from 'hono/cookie';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import {
@@ -12,8 +13,10 @@ import {
   revokeSession,
   sessionRowForToken,
   verifyChallenge,
+  SESSION_TTL_DAYS,
 } from '../auth.js';
-import { bearerToken, isDemoMode, resolveActorId, type AppContext } from '../context.js';
+import { isDemoMode, resolveActorId, sessionToken, SESSION_COOKIE, type AppContext } from '../context.js';
+import { RateLimiter, clientIp, challengeRateRule, verifyRateRule } from '../rate-limit.js';
 import { get } from '../db.js';
 import { serializeActor } from '../serialize.js';
 
@@ -46,9 +49,32 @@ function authAnchor(c: { req: { header: (name: string) => string | undefined } }
 export function authRoutes(ctx: AppContext): Hono {
   const app = new Hono();
 
+  // Per-instance limiters: a fresh app (and so a fresh counter) per process and
+  // per test. Keyed by IP + wallet at the call sites, so one flooding wallet
+  // cannot lock out a different wallet behind the same NAT.
+  const challengeLimiter = new RateLimiter(challengeRateRule());
+  const verifyLimiter = new RateLimiter(verifyRateRule());
+
+  /** Set the session token as an httpOnly cookie so browsers never touch it in JS. */
+  function setSessionCookie(c: Context, token: string): void {
+    const secure = c.req.header('x-forwarded-proto') === 'https' || process.env.VIN_COOKIE_SECURE === 'true';
+    setCookie(c, SESSION_COOKIE, token, {
+      httpOnly: true,
+      sameSite: 'Lax',
+      path: '/',
+      secure,
+      maxAge: SESSION_TTL_DAYS * 86_400,
+    });
+  }
+
   /** Step 1: ask for a nonce and the exact message to sign. */
   app.post('/auth/challenge', zValidator('json', zChallengeBody), (c) => {
     const { walletAddress } = c.req.valid('json');
+    const limited = challengeLimiter.check(`${clientIp(c)}:${walletAddress}`);
+    if (!limited.ok) {
+      c.header('Retry-After', String(limited.retryAfterSeconds));
+      return c.json({ error: { code: 'RATE_LIMITED', message: 'Too many sign-in challenges; slow down and retry.' } }, 429);
+    }
     const challenge = createChallenge(ctx.db, { walletAddress, ...authAnchor(c) });
     const existing = findActorByWallet(ctx.db, walletAddress);
     return c.json({
@@ -64,6 +90,11 @@ export function authRoutes(ctx: AppContext): Hono {
   /** Step 2: hand back the signature. Only a valid one creates a session. */
   app.post('/auth/verify', zValidator('json', zVerifyBody), (c) => {
     const input = c.req.valid('json');
+    const limited = verifyLimiter.check(`${clientIp(c)}:${input.walletAddress}`);
+    if (!limited.ok) {
+      c.header('Retry-After', String(limited.retryAfterSeconds));
+      return c.json({ error: { code: 'RATE_LIMITED', message: 'Too many verification attempts; slow down and retry.' } }, 429);
+    }
 
     // Profile requirements are checked BEFORE the signature is verified, so a
     // missing display name does not burn the challenge. The client can resubmit
@@ -139,6 +170,7 @@ export function authRoutes(ctx: AppContext): Hono {
       method: 'wallet',
       walletAddress: verified.walletAddress,
     });
+    setSessionCookie(c, session.token);
 
     return c.json(
       {
@@ -154,8 +186,8 @@ export function authRoutes(ctx: AppContext): Hono {
 
   /** Who am I? Used by the frontend to drop a stale token. */
   app.get('/auth/session', (c) => {
-    const token = bearerToken(c.req.header('authorization'));
-    if (!token) return c.json({ error: { code: 'UNAUTHENTICATED', message: 'No bearer token presented' } }, 401);
+    const token = sessionToken(c);
+    if (!token) return c.json({ error: { code: 'UNAUTHENTICATED', message: 'No session presented' } }, 401);
     const actorId = actorIdForToken(ctx.db, token);
     const row = sessionRowForToken(ctx.db, token);
     if (!actorId || !row) {
@@ -172,8 +204,10 @@ export function authRoutes(ctx: AppContext): Hono {
   });
 
   app.post('/auth/signout', (c) => {
-    const token = bearerToken(c.req.header('authorization'));
-    if (!token) return c.json({ error: { code: 'UNAUTHENTICATED', message: 'No bearer token presented' } }, 401);
+    const token = sessionToken(c);
+    // Clear the browser cookie regardless, so a stale cookie never lingers.
+    deleteCookie(c, SESSION_COOKIE, { path: '/' });
+    if (!token) return c.json({ error: { code: 'UNAUTHENTICATED', message: 'No session presented' } }, 401);
     const revoked = revokeSession(ctx.db, token);
     return c.json({ revoked });
   });
