@@ -49,6 +49,8 @@ export const ROLE_LABEL: Record<string, string> = {
 };
 
 export const STATE_LABEL: Record<string, string> = {
+  listed: 'Available',
+  reserved: 'Reserved',
   draft: 'Draft',
   escrow_pending: 'Escrow awaiting funds',
   inspecting: 'Inspection in progress',
@@ -59,23 +61,34 @@ export const STATE_LABEL: Record<string, string> = {
   cancelled: 'Cancelled',
 };
 
+/** Tailwind classes for the status "pills" (border + background + text). */
+export const TONE = {
+  neutral: 'border-slate-300 bg-white text-slate-800 shadow-2xs',
+  brand: 'border-slate-900 bg-slate-900 text-white font-semibold shadow-2xs',
+  ok: 'border-emerald-300 bg-emerald-50 text-emerald-950 font-semibold shadow-2xs',
+  warn: 'border-amber-300 bg-amber-50 text-amber-950 font-semibold shadow-2xs',
+  bad: 'border-rose-300 bg-rose-50 text-rose-950 font-semibold shadow-2xs',
+} as const;
+
 export const STATE_TONE: Record<string, string> = {
-  escrow_pending: 'text-signal border-signal/40',
-  inspecting: 'text-info border-info/40',
-  inspection_accepted: 'text-safe border-safe/40',
-  handover_pending: 'text-signal border-signal/40',
-  completed: 'text-safe border-safe/40',
-  frozen: 'text-alert border-alert/50',
-  cancelled: 'text-mist-400',
-  draft: 'text-mist-300',
+  listed: TONE.ok,
+  reserved: TONE.warn,
+  escrow_pending: TONE.warn,
+  inspecting: TONE.brand,
+  inspection_accepted: TONE.ok,
+  handover_pending: TONE.warn,
+  completed: TONE.ok,
+  frozen: TONE.bad,
+  cancelled: TONE.neutral,
+  draft: TONE.neutral,
 };
 
 export const CATEGORY_TONE: Record<string, string> = {
-  agreement: 'text-info border-info/40',
-  inspection: 'text-signal border-signal/40',
-  funds: 'text-safe border-safe/40',
-  note: 'text-paper border-ink-600',
-  dispute: 'text-alert border-alert/50',
+  agreement: TONE.brand,
+  inspection: TONE.warn,
+  funds: TONE.ok,
+  note: TONE.neutral,
+  dispute: TONE.bad,
 };
 
 export function randomSha256(): string {

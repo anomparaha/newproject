@@ -1,19 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ROLE_LABEL } from '@/lib/format';
 import { WALLET_OPTIONS } from '@/lib/solana-wallet';
 import { ProfileRequiredError, useSession, WalletUnavailableError } from '@/components/SessionProvider';
-
-/**
- * Sign-in dialog.
- *
- * "Connect wallet" is real: the wallet signs a single-use challenge and the API
- * verifies the ed25519 signature. Google and X are UI-only by design - social
- * sign-in needs OAuth credentials AND an embedded-wallet provider so the user
- * still ends up with an address, and neither exists yet. The dialog says so
- * instead of pretending.
- */
+import { Icon } from '@/components/Icons';
+import { Badge } from '@/components/Chips';
 
 const GoogleMark = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
@@ -29,15 +22,6 @@ const XMark = () => (
     <path
       fill="currentColor"
       d="M18.9 2.6h3.2l-7 8 8.2 10.8h-6.4l-5-6.6-5.8 6.6H2.9l7.5-8.6L2.5 2.6H9l4.5 6 5.4-6zm-1.1 16.9h1.8L7.3 4.4H5.4l12.4 15.1z"
-    />
-  </svg>
-);
-
-const WalletMark = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-    <path
-      fill="currentColor"
-      d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18a1 1 0 0 1 1 1v1.5h-7.5a3 3 0 0 0 0 6H19V19a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 17.5v-10zm10 4.5a1.5 1.5 0 0 1 1.5-1.5H21v3h-6.5A1.5 1.5 0 0 1 13 12z"
     />
   </svg>
 );
@@ -82,8 +66,6 @@ export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => 
     setError(null);
     try {
       if (retry && withProfile) {
-        // Reuse the SAME challenge and signature: the server did not burn the
-        // nonce when it asked for a profile, so the wallet is not prompted twice.
         await signInWithWallet({
           walletId,
           displayName: withProfile,
@@ -105,7 +87,7 @@ export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => 
         return;
       }
       if (caught instanceof WalletUnavailableError) {
-        setError(`${caught.message}. Install the extension, or use the demo binding below.`);
+        setError(`${caught.message}. Install the browser extension, or select a demo actor below.`);
         return;
       }
       setError(caught instanceof Error ? caught.message : 'Sign-in failed');
@@ -114,85 +96,94 @@ export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => 
     }
   };
 
-  return (
+  const dialog = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 px-4 py-6 backdrop-blur-md animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-label="Sign in"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
-      <div className="max-h-full w-full max-w-md overflow-y-auto rounded-2xl border border-ink-700 bg-ink-900 shadow-2xl">
-        <div className="flex items-start justify-between border-b border-ink-800 px-5 py-4">
-          <div>
-            <div className="text-base font-semibold tracking-tight">Sign in to VIN</div>
-            <p className="mt-0.5 text-xs text-mist-400">
-              Your wallet is the account. Connect it to trade, or use the demo binding to click through the seeded
-              flow.
+      <div className="max-h-full w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-white shadow-pop">
+        <div className="flex items-start justify-between gap-4 px-6 pb-4 pt-6 border-b border-line">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand-50 text-brand-600">
+                <Icon name="shield" className="h-4 w-4" />
+              </span>
+              <div className="text-xl font-bold tracking-tight text-ink">Authenticate Identity</div>
+            </div>
+            <p className="text-xs leading-relaxed text-muted">
+              Connect your cryptographic Solana wallet to verify your role, or select a demo entity.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md px-2 py-1 text-mist-400 hover:bg-ink-800 hover:text-paper"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-muted hover:bg-subtle hover:text-ink transition-colors"
           >
-            ✕
+            <Icon name="x" className="h-4 w-4" />
           </button>
         </div>
 
         {profile ? (
-          <div className="space-y-3 border-b border-ink-800 bg-signal/5 px-5 py-4">
+          <div className="mx-6 my-4 space-y-3 rounded-2xl border border-slate-300 bg-slate-50 p-4">
             <div>
-              <div className="text-sm font-medium">Create your account</div>
-              <p className="mt-0.5 text-xs text-mist-400">
-                <span className="hash">{profile.address}</span> has not signed in before. Pick a name; the signature you
-                already made stays valid.
+              <div className="text-sm font-bold text-ink">Create New Buyer Account</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                Address <span className="hash font-mono">{profile.address}</span> is new to the registry. Enter your display name.
               </p>
             </div>
-            <label className="block text-xs uppercase tracking-wider text-mist-400" htmlFor="displayName">
-              Display name
-            </label>
-            <input
-              id="displayName"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="e.g. Blue Horizon Trading"
-              autoFocus
-            />
-            <div className="flex gap-2">
+            <div>
+              <label htmlFor="displayName" className="text-xs font-semibold text-muted uppercase tracking-wider">
+                Display Entity Name
+              </label>
+              <input
+                id="displayName"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="e.g. Apex Global Trading"
+                autoFocus
+                className="mt-1"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
               <button
                 type="button"
-                className="primary"
+                className="primary flex-1 py-2.5 text-xs font-bold"
                 disabled={displayName.trim().length < 2 || busyWallet !== null}
                 onClick={() => void startWallet(profile.error.walletId, displayName.trim(), profile.error)}
               >
-                {busyWallet ? 'Working…' : 'Create account as buyer'}
+                {busyWallet ? 'Registering…' : 'Register Account'}
               </button>
-              <button type="button" className="ghost" onClick={() => setProfile(null)}>
+              <button type="button" className="ghost px-4 py-2.5 text-xs" onClick={() => setProfile(null)}>
                 Back
               </button>
             </div>
-            <p className="text-[0.68rem] text-mist-400">
-              Buyers are self-serve. Seller, workshop and curator accounts need country and email before they can
-              operate.
-            </p>
           </div>
         ) : null}
 
-        <div className="space-y-2 px-5 py-4">
+        <div className="space-y-3 px-6 py-5">
           <button
             type="button"
             onClick={() => setWalletOpen((value) => !value)}
-            className="flex w-full items-center gap-3 rounded-xl border border-signal/50 bg-signal/10 px-4 py-3 text-sm text-signal hover:bg-signal/15"
+            className="primary w-full justify-between px-4 py-3 text-sm font-semibold shadow-xs"
             aria-expanded={walletOpen}
           >
-            <WalletMark />
-            <span className="flex-1 text-left">Connect wallet</span>
-            <span className="chip border-signal/40 text-signal">real signature</span>
+            <div className="flex items-center gap-2.5">
+              <Icon name="wallet" className="h-4 w-4" />
+              <span>Connect Solana Wallet</span>
+            </div>
+            <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider">
+              Ed25519 Verified
+            </span>
           </button>
 
           {walletOpen ? (
-            <div className="space-y-1.5 rounded-xl border border-ink-700 bg-ink-950/60 p-2">
+            <div className="space-y-1.5 rounded-2xl border border-line bg-subtle/50 p-2.5">
               {WALLET_OPTIONS.map((wallet) => {
                 const detected = walletAvailable(wallet.id);
                 return (
@@ -201,58 +192,70 @@ export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => 
                     type="button"
                     disabled={busyWallet !== null}
                     onClick={() => void startWallet(wallet.id)}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-ink-800 disabled:opacity-50"
+                    className="flex w-full items-center justify-between rounded-xl bg-white px-3.5 py-2.5 text-left text-xs font-semibold text-ink shadow-xs border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all disabled:opacity-50"
                   >
                     <span>{wallet.name}</span>
-                    <span className="text-[0.68rem] text-mist-400">{detected ? 'detected' : 'not installed'}</span>
+                    <span className={`text-[0.7rem] ${detected ? 'text-ok font-bold' : 'text-muted'}`}>
+                      {detected ? 'Installed' : 'Extension Missing'}
+                    </span>
                   </button>
                 );
               })}
               {!WALLET_OPTIONS.some((wallet) => walletAvailable(wallet.id)) ? (
-                <p className="px-3 py-1 text-[0.68rem] text-mist-400">
-                  No Solana wallet extension found in this browser.
-                </p>
+                <p className="px-2 py-1 text-xs text-muted">No compatible Solana browser extension detected.</p>
               ) : null}
             </div>
           ) : null}
 
-          <button
-            type="button"
-            onClick={() => {
-              void signInLocal('google').then(onClose);
-            }}
-            className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-4 py-3 text-sm hover:border-ink-600 hover:bg-ink-800"
-          >
-            <GoogleMark />
-            <span className="flex-1 text-left">Continue with Google</span>
-            <span className="chip text-mist-400">UI only</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void signInLocal('x').then(onClose);
-            }}
-            className="flex w-full items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-4 py-3 text-sm hover:border-ink-600 hover:bg-ink-800"
-          >
-            <XMark />
-            <span className="flex-1 text-left">Continue with X</span>
-            <span className="chip text-mist-400">UI only</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                void signInLocal('google').then(onClose);
+              }}
+              className="ghost w-full justify-center px-3 py-2.5 text-xs font-semibold"
+            >
+              <GoogleMark />
+              <span>Google</span>
+              <Badge tone="neutral">UI Only</Badge>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void signInLocal('x').then(onClose);
+              }}
+              className="ghost w-full justify-center px-3 py-2.5 text-xs font-semibold"
+            >
+              <XMark />
+              <span>X (Twitter)</span>
+              <Badge tone="neutral">UI Only</Badge>
+            </button>
+          </div>
 
           {error ? (
-            <p className="rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</p>
+            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-700">
+              {error}
+            </p>
           ) : null}
         </div>
 
-        <div className="border-t border-ink-800 px-5 py-4">
-          <div className="text-[0.68rem] uppercase tracking-wider text-mist-400">
-            Demo binding (no signature, needs the seeded actors)
+        {/* Demo Binding Box */}
+        <div className="border-t border-line bg-subtle/70 px-6 py-5 space-y-3">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-ink flex items-center gap-1.5">
+              <span>Quick Demo Role Simulator</span>
+              <span className="rounded bg-brand-100 text-brand-800 px-1.5 py-0.2 text-[0.65rem] font-bold">
+                Test Mode
+              </span>
+            </div>
+            <p className="text-xs text-muted mt-0.5">Switch between test Buyer, Seller, Inspector, or Arbiter accounts.</p>
           </div>
+
           <select
-            className="mt-2"
             value={demoActorId}
             onChange={(event) => setDemoActorId(event.target.value)}
-            aria-label="Demo actor"
+            aria-label="Demo actor selection"
+            className="text-xs font-medium"
           >
             {actors.length === 0 ? <option value="">Backend not running</option> : null}
             {actors.map((actor) => (
@@ -261,28 +264,31 @@ export function SignInDialog({ open, onClose }: { open: boolean; onClose: () => 
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="primary mt-3"
-            disabled={!demoActorId}
-            onClick={() => {
-              void signInWithDemoActor(actors.find((actor) => actor.id === demoActorId) ?? null).then(onClose);
-            }}
-          >
-            Continue as this actor
-          </button>
-          <button type="button" onClick={onClose} className="ghost mt-2 w-full">
-            Keep browsing without signing in
-          </button>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="primary flex-1 py-2.5 text-xs font-bold"
+              disabled={!demoActorId}
+              onClick={() => {
+                void signInWithDemoActor(actors.find((actor) => actor.id === demoActorId) ?? null).then(onClose);
+              }}
+            >
+              Simulate this Role
+            </button>
+            <button type="button" onClick={onClose} className="ghost px-3 py-2.5 text-xs font-semibold">
+              Dismiss
+            </button>
+          </div>
         </div>
 
-        <p className="border-t border-ink-800 bg-ink-950/60 px-5 py-3 text-[0.68rem] leading-relaxed text-mist-400">
-          Wallet sign-in is real: the wallet signs a one-time challenge and the API verifies the ed25519 signature
-          before issuing a session token. Google and X are not wired to OAuth yet
-          {lastWalletId ? ` (last wallet tried: ${lastWalletId})` : ''}. The demo binding below signs nothing; the API
-          accepts it only while demo mode is on.
-        </p>
+        <div className="border-t border-line px-6 py-3.5 text-[0.7rem] text-muted leading-relaxed">
+          Ed25519 signature verified on the server side prior to issuing session token.
+          {lastWalletId ? ` Last wallet requested: ${lastWalletId}.` : ''}
+        </div>
       </div>
     </div>
   );
+
+  return createPortal(dialog, document.body);
 }

@@ -1,165 +1,347 @@
 @import 'tailwindcss';
 
+/* ------------------------------------------------------------------
+   VIN design system — High-Contrast Grounded Light.
+   Eliminates white-on-white stacking & washed-out pastels.
+   Grounded cool slate canvas (#eaedf2), pure white floating cards,
+   crisp structural borders (#cbd5e1), and bold, high-contrast typography.
+------------------------------------------------------------------- */
 @theme {
-  --color-ink-950: #08090b;
-  --color-ink-900: #0d0f13;
-  --color-ink-850: #12151b;
-  --color-ink-800: #171b23;
-  --color-ink-700: #232936;
-  --color-ink-600: #38404f;
-  --color-mist-400: #8b93a3;
-  --color-mist-300: #b6bdc9;
-  --color-paper: #e9ebef;
-  --color-signal: #f0b429;
-  --color-signal-dim: #6b4e12;
-  --color-safe: #4fb477;
-  --color-alert: #e2574c;
-  --color-info: #5b9dd9;
-  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
+  --color-canvas: #e2e8f0;
+  --color-surface: #ffffff;
+  --color-subtle: #f1f5f9;
+  --color-line: #cbd5e1;
+  --color-line-strong: #94a3b8;
+
+  --color-ink: #09090b;
+  --color-body: #1e293b;
+  --color-muted: #475569;
+
+  --color-brand-50: #f8fafc;
+  --color-brand-100: #f1f5f9;
+  --color-brand-200: #e2e8f0;
+  --color-brand-500: #334155;
+  --color-brand-600: #0f172a;
+  --color-brand-700: #09090b;
+  --color-brand-800: #020617;
+  --color-brand-900: #000000;
+
+  --color-ok: #047857;
+  --color-ok-soft: #d1fae5;
+  --color-warn: #b45309;
+  --color-warn-soft: #fef3c7;
+  --color-bad: #be123c;
+  --color-bad-soft: #ffe4e6;
+
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+
+  --shadow-card: 0 1px 3px 0 rgb(15 23 42 / 0.08), 0 1px 2px -1px rgb(15 23 42 / 0.08);
+  --shadow-elevated: 0 4px 6px -1px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.08);
+  --shadow-pop: 0 10px 15px -3px rgb(15 23 42 / 0.14), 0 4px 6px -4px rgb(15 23 42 / 0.08);
 }
 
-html,
-body {
-  background-color: var(--color-ink-950);
-  color: var(--color-paper);
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-body {
-  font-feature-settings: 'tnum' 1;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  html {
+    background-color: var(--color-canvas);
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-body);
+    font-feature-settings: 'tnum' 1, 'cv11' 1;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: #cbd5e1;
+    color: #09090b;
+  }
+
+  :focus-visible {
+    outline: 2px solid #0f172a;
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled),
+  [role='button'] {
+    cursor: pointer;
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: #e2e8f0;
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+    padding: 0.12rem 0.4rem;
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  img {
+    background-color: var(--color-subtle);
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 10px;
+    padding: 0.6rem 0.85rem;
+    color: var(--color-ink);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  }
+
+  input[type='checkbox'] {
+    width: 1.1rem;
+    height: 1.1rem;
+    padding: 0;
+    border-radius: 5px;
+    accent-color: #0f172a;
+    cursor: pointer;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #64748b;
+  }
+
+  input:hover,
+  select:hover,
+  textarea:hover {
+    border-color: #475569;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: #0f172a;
+    box-shadow: 0 0 0 3px rgb(15 23 42 / 0.15);
+  }
+
+  label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  dialog::backdrop {
+    backdrop-filter: blur(8px);
+    background-color: rgb(15 23 42 / 0.6);
+  }
+
+  /* Nothing behind the sign-in dialog may scroll on small screens. */
+  body:has([role='dialog']) {
+    overflow: hidden;
+  }
 }
 
-::selection {
-  background: var(--color-signal);
-  color: #000;
-}
+@layer components {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 16px;
+    box-shadow: var(--shadow-card);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
 
-.card {
-  border: 1px solid var(--color-ink-700);
-  background: linear-gradient(180deg, var(--color-ink-900), var(--color-ink-950));
-  border-radius: 14px;
-}
+  .card-hover:hover {
+    border-color: var(--color-line-strong);
+    box-shadow: var(--shadow-elevated);
+  }
 
-.hairline {
-  border-color: var(--color-ink-700);
-}
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+    border-radius: 999px;
+    border: 1px solid var(--color-line);
+    padding: 0.2rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.25rem;
+    letter-spacing: 0.01em;
+    color: var(--color-ink);
+  }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  border-radius: 999px;
-  border: 1px solid var(--color-ink-600);
-  padding: 0.1rem 0.55rem;
-  font-size: 0.7rem;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--color-mist-300);
-}
+  .hash {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    word-break: break-all;
+    letter-spacing: -0.02em;
+    font-weight: 500;
+  }
 
-.hash {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--color-mist-400);
-  word-break: break-all;
-}
+  .primary,
+  .ghost,
+  .soft {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 10px;
+    padding: 0.65rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.25rem;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
 
-table.ledger {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
+  .primary {
+    background: #0f172a;
+    border: 1px solid #020617;
+    color: #ffffff;
+    box-shadow: 0 2px 4px 0 rgb(15 23 42 / 0.25), inset 0 1px 0 0 rgb(255 255 255 / 0.15);
+  }
 
-table.ledger th {
-  text-align: left;
-  font-weight: 500;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-mist-400);
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--color-ink-700);
-}
+  .primary:hover:not(:disabled) {
+    background: #1e293b;
+    border-color: #0f172a;
+    box-shadow: 0 6px 16px 0 rgb(15 23 42 / 0.3);
+    transform: translateY(-0.5px);
+  }
 
-table.ledger td {
-  padding: 0.7rem 0.75rem;
-  border-bottom: 1px solid var(--color-ink-800);
-  vertical-align: top;
-}
+  .primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.2);
+  }
 
-table.ledger tr:hover td {
-  background: rgba(255, 255, 255, 0.015);
-}
+  .ghost {
+    background: #ffffff;
+    border: 1px solid var(--color-line-strong);
+    color: var(--color-ink);
+    box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  }
 
-input,
-select,
-textarea {
-  background: var(--color-ink-850);
-  border: 1px solid var(--color-ink-600);
-  border-radius: 8px;
-  padding: 0.5rem 0.65rem;
-  color: var(--color-paper);
-  font-size: 0.85rem;
-  width: 100%;
-}
+  .ghost:hover:not(:disabled) {
+    background: #f1f4f8;
+    border-color: #475569;
+    color: #000000;
+    transform: translateY(-0.5px);
+  }
 
-input:focus,
-select:focus,
-textarea:focus {
-  outline: 2px solid var(--color-signal);
-  outline-offset: 1px;
-}
+  .soft {
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+  }
 
-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-mist-400);
-  display: block;
-  margin-bottom: 0.25rem;
-}
+  .soft:hover:not(:disabled) {
+    background: #cbd5e1;
+    color: #000000;
+  }
 
-button.primary {
-  background: var(--color-signal);
-  color: #1a1204;
-  font-weight: 600;
-  border-radius: 8px;
-  padding: 0.55rem 0.9rem;
-  font-size: 0.85rem;
-  width: 100%;
-}
+  .primary:disabled,
+  .ghost:disabled,
+  .soft:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
 
-button.primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+  table.ledger {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
 
-button.ghost {
-  border: 1px solid var(--color-ink-600);
-  color: var(--color-paper);
-  border-radius: 8px;
-  padding: 0.5rem 0.85rem;
-  font-size: 0.8rem;
-}
+  table.ledger th {
+    text-align: left;
+    background: #f1f4f8;
+    font-weight: 700;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-ink);
+    padding: 0.85rem 1.15rem;
+    border-bottom: 1px solid var(--color-line);
+    white-space: nowrap;
+  }
 
-button.ghost:hover {
-  border-color: var(--color-signal);
-  color: var(--color-signal);
-}
+  table.ledger td {
+    padding: 0.95rem 1.15rem;
+    border-bottom: 1px solid var(--color-line);
+    vertical-align: middle;
+  }
 
-/* Skeleton shimmer is not needed, but the sign-in dialog and photo cards are
-   the first components with depth: give cards a hover state and keep images
-   from flashing white while they decode. */
-img {
-  background-color: var(--color-ink-850);
-}
+  table.ledger tbody tr:last-child td {
+    border-bottom: 0;
+  }
 
-dialog::backdrop {
-  backdrop-filter: blur(4px);
-}
+  table.ledger tbody tr:hover td {
+    background: #f8fafc;
+  }
 
-/* The sign-in dialog is rendered as a plain overlay; make sure nothing behind
-   it can scroll on small screens. */
-body:has([role='dialog']) {
-  overflow: hidden;
+  /* ------------------------------------------------------------------
+     Smooth animations & micro-interactions (60fps hardware accelerated)
+  ------------------------------------------------------------------- */
+  @keyframes floatSlow {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+
+  @keyframes pulseBeacon {
+    0% {
+      transform: scale(0.95);
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+    70% {
+      transform: scale(1);
+      box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    }
+    100% {
+      transform: scale(0.95);
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+  }
+
+  .beacon-dot {
+    animation: pulseBeacon 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-float {
+    animation: floatSlow 5s ease-in-out infinite;
+  }
+
+  .btn-press {
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
+  }
+  .btn-press:active {
+    transform: scale(0.97);
+  }
+
+  .reveal-element {
+    transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-element {
+      transition: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
 }

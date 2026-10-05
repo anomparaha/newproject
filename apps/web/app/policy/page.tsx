@@ -1,163 +1,245 @@
 import { api } from '@/lib/api';
-import { Notice } from '@/components/Chips';
+import { Badge, Notice, PageHeader } from '@/components/Chips';
+import { Icon } from '@/components/Icons';
 import { formatAmount } from '@/lib/format';
+import { ScrollReveal } from '@/components/ScrollReveal';
 
 export const dynamic = 'force-dynamic';
 
 const BPS_LABEL: Record<string, string> = {
-  vehicleBps: 'Vehicle transaction fee (bps)',
-  inspectionBps: 'Inspection app fee (bps)',
-  tokenDiscountFactor: 'Fee discount factor when paid in token',
+  vehicleBps: 'Vehicle Transaction Escrow Fee (basis points)',
+  inspectionBps: 'Inspection Application Fee (basis points)',
+  tokenDiscountFactor: 'Token Protocol Discount Factor',
 };
 
 const BOND_LABEL: Record<string, string> = {
-  listingBondUsdc: 'Listing bond (USDC)',
-  inspectorBondUsdc: 'Workshop bond (USDC)',
-  stablecoinAllowedBelowUsd: 'Stablecoin bond allowed below (USD)',
-  slashRatio: 'Share of the bond slashed on a violation',
+  listingBondUsdc: 'Listing Collateral Bond (USDC)',
+  inspectorBondUsdc: 'Workshop Capacity Bond (USDC)',
+  stablecoinAllowedBelowUsd: 'Fiat/Stablecoin Permitted Below (USD)',
+  slashRatio: 'Proportion of Bond Slashed on Proven Fraud',
 };
+
+const CONTROLS = [
+  'Vehicle purchase funds cannot release before physical handover conditions are verified.',
+  'Workshop inspection funds cannot release prior to an uploaded, complete report.',
+  'Sellers cannot select the inspection workshop for their own listed vehicles.',
+  'Historical vehicle events are permanently immutable and append-only.',
+  'Odometer rollbacks and anomalies remain permanently visible to subsequent buyers.',
+  'An active dispute halts both escrow payouts and completion receipt generation.',
+  'Revocation rules apply to fraudulent dealer and workshop entities.',
+  'Every record explicitly establishes a claim trail, not a legal state registration title.',
+];
 
 export default async function PolicyPage() {
   const policy = await api.policy();
 
   if (!policy) {
-    return <Notice tone="warn" title="API is not running">Run <code>npm run dev:api</code>.</Notice>;
+    return (
+      <Notice tone="warn" title="API server is not responding">
+        Run <code>npm run dev:api</code> to inspect protocol policy parameters.
+      </Notice>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Policy & stages</h1>
-        <p className="max-w-3xl text-sm leading-relaxed text-mist-400">{policy.whatItIs}</p>
-      </header>
+    <div className="space-y-12">
+      <ScrollReveal direction="up" delay={0}>
+        <PageHeader
+          eyebrow="Protocol Governance & Safety"
+          title="Policy, Collateral & Staged Rollout"
+          description={policy.whatItIs}
+        />
+      </ScrollReveal>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Notice tone="info" title="Money">{policy.moneyRule}</Notice>
-        <Notice tone="warn" title="The NFT is not a title">{policy.disclaimers?.nftNotTitle}</Notice>
-        <Notice tone="danger" title="The token is not equity">{policy.disclaimers?.tokenNotEquity}</Notice>
+      {/* Disclaimers & Core Truths */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <ScrollReveal direction="up" delay={50} className="h-full">
+          <Notice tone="info" title="Fiat & Stablecoin Settlement" tag="Settlement" className="h-full">
+            {policy.moneyRule}
+          </Notice>
+        </ScrollReveal>
+        <ScrollReveal direction="up" delay={120} className="h-full">
+          <Notice tone="warn" title="Claim Trail Boundary" tag="Legal Scope" className="h-full">
+            {policy.disclaimers?.nftNotTitle}
+          </Notice>
+        </ScrollReveal>
+        <ScrollReveal direction="up" delay={190} className="h-full">
+          <Notice tone="danger" title="Regulatory Notice" tag="Compliance" className="h-full">
+            {policy.disclaimers?.tokenNotEquity}
+          </Notice>
+        </ScrollReveal>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="card p-4">
-          <h2 className="text-sm font-medium">Fees</h2>
-          <ul className="mt-3 space-y-2 text-sm">
+      {/* Fees, Bonds, and Token Scope */}
+      <ScrollReveal direction="up" delay={50} as="section" className="grid gap-6 lg:grid-cols-3">
+        <div className="card p-6 bg-white space-y-4">
+          <div className="flex items-center justify-between border-b border-line pb-3">
+            <h2 className="text-base font-bold text-ink">Protocol Fee Structure</h2>
+            <Badge tone="neutral">Standard</Badge>
+          </div>
+          <ul className="divide-y divide-line text-sm">
             {Object.entries(policy.fees).map(([key, value]) => (
-              <li key={key} className="flex items-start justify-between gap-3">
-                <span className="text-mist-300">{BPS_LABEL[key] ?? key}</span>
-                <span className="tabular-nums text-mist-400">{String(value)}</span>
+              <li key={key} className="flex items-start justify-between gap-3 py-3">
+                <span className="text-body font-medium text-xs sm:text-sm">{BPS_LABEL[key] ?? key}</span>
+                <span className="font-bold tabular-nums text-ink">{String(value)}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-xs text-mist-400">
-            Actors without the token can still pay fees in stablecoin. Only the part of the fee that actually arrives as
-            the token can be burned, and only once it has been collected from real usage — there is no scheduled burn.
+          <p className="text-xs leading-relaxed text-muted pt-2 border-t border-line">
+            Participants can settle entirely in fiat or stablecoins. Protocol fees burned are strictly limited to revenue
+            actually collected from genuine usage.
           </p>
         </div>
 
-        <div className="card p-4">
-          <h2 className="text-sm font-medium">Bonds</h2>
-          <ul className="mt-3 space-y-2 text-sm">
+        <div className="card p-6 bg-white space-y-4">
+          <div className="flex items-center justify-between border-b border-line pb-3">
+            <h2 className="text-base font-bold text-ink">Collateral Bonds</h2>
+            <Badge tone="ok">Protection</Badge>
+          </div>
+          <ul className="divide-y divide-line text-sm">
             {Object.entries(policy.bonds).map(([key, value]) => (
-              <li key={key} className="flex items-start justify-between gap-3">
-                <span className="text-mist-300">{BOND_LABEL[key] ?? key}</span>
-                <span className="tabular-nums text-mist-400">{String(value)}</span>
+              <li key={key} className="flex items-start justify-between gap-3 py-3">
+                <span className="text-body font-medium text-xs sm:text-sm">{BOND_LABEL[key] ?? key}</span>
+                <span className="font-bold tabular-nums text-ink">{String(value)}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-xs text-mist-400">
-            A bond is slashed when a listing is proven fake, a seller disappears, or a report fails the standard. The
-            slashed amount goes to the dispute fund, never to the team wallet.
+          <p className="text-xs leading-relaxed text-muted pt-2 border-t border-line">
+            Bonds are slashed upon fraudulent listings, ghost inventory, or corrupt inspection reports. Slashed funds
+            transfer into the communal dispute restitution fund.
           </p>
         </div>
 
-        <div className="card p-4">
-          <h2 className="text-sm font-medium">The token: three functions, no more</h2>
-          <ul className="mt-3 space-y-1 text-sm">
+        <div className="card p-6 bg-white space-y-4">
+          <div className="flex items-center justify-between border-b border-line pb-3">
+            <h2 className="text-base font-bold text-ink">Token Utility Constraints</h2>
+            <Badge tone="brand">Strict Scope</Badge>
+          </div>
+          <div className="text-xs font-bold uppercase tracking-wider text-emerald-700">Permitted Functions</div>
+          <ul className="space-y-2 text-xs text-body">
             {policy.token.functions.map((fn) => (
-              <li key={fn} className="flex items-center gap-2">
-                <span className="text-safe">✓</span> {fn}
+              <li key={fn} className="flex items-start gap-2">
+                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600">
+                  <Icon name="check" className="h-2.5 w-2.5" />
+                </span>
+                <span>{fn}</span>
               </li>
             ))}
           </ul>
-          <div className="mt-3 text-xs uppercase tracking-wider text-mist-400">Never</div>
-          <ul className="mt-1 space-y-1 text-sm">
-            {policy.token.neverDoes.map((fn) => (
-              <li key={fn} className="flex items-center gap-2 text-mist-300">
-                <span className="text-alert">✕</span> {fn}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-mist-400">{policy.tokenMetricsNote}</p>
-        </div>
-      </section>
 
-      <section className="card p-4">
-        <h2 className="text-sm font-medium">Sequence before anything may be published</h2>
-        <div className="mt-3 grid gap-3 lg:grid-cols-4">
-          {policy.stages.map((stage) => (
-            <div key={stage.id} className="rounded-lg border border-ink-700 p-3">
-              <div className="text-sm font-medium">{stage.label}</div>
-              <div className="mt-2 text-[0.68rem] uppercase tracking-wider text-safe">allowed</div>
-              <ul className="mt-1 space-y-1 text-xs text-mist-300">
-                {stage.allowed.map((item) => (
-                  <li key={item}>· {item}</li>
-                ))}
-              </ul>
-              <div className="mt-2 text-[0.68rem] uppercase tracking-wider text-alert">not allowed</div>
-              <ul className="mt-1 space-y-1 text-xs text-mist-400">
-                {stage.forbidden.map((item) => (
-                  <li key={item}>· {item}</li>
-                ))}
-              </ul>
+          <div className="text-xs font-bold uppercase tracking-wider text-rose-700 pt-2 border-t border-line">
+            Strictly Prohibited
+          </div>
+          <ul className="space-y-2 text-xs text-muted">
+            {policy.token.neverDoes.map((fn) => (
+              <li key={fn} className="flex items-start gap-2">
+                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-rose-50 text-rose-600">
+                  <Icon name="x" className="h-2.5 w-2.5" />
+                </span>
+                <span>{fn}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </ScrollReveal>
+
+      {/* Sequential Rollout Stages */}
+      <ScrollReveal direction="up" delay={50} as="section" className="space-y-5">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-ink">Sequential Stage Prerequisites</h2>
+          <p className="text-sm text-muted mt-0.5">
+            Each subsequent stage unlocks only after the preceding stage demonstrates verifiable physical completion.
+          </p>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {policy.stages.map((stage, index) => (
+            <div key={stage.id} className="card p-5 bg-white space-y-4 shadow-xs">
+              <div className="flex items-center justify-between border-b border-line pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-7 w-7 place-items-center rounded-lg bg-brand-50 text-xs font-bold text-brand-700">
+                    0{index + 1}
+                  </span>
+                  <div className="text-sm font-bold text-ink">{stage.label}</div>
+                </div>
+                {index === 0 ? <Badge tone="ok">Current</Badge> : <Badge tone="neutral">Locked</Badge>}
+              </div>
+
+              <div>
+                <div className="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-700">Permitted</div>
+                <ul className="mt-1.5 space-y-1.5 text-xs text-body">
+                  {stage.allowed.map((item) => (
+                    <li key={item} className="flex items-start gap-1.5">
+                      <span className="text-emerald-600 font-bold">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="border-t border-line pt-3">
+                <div className="text-[0.65rem] font-bold uppercase tracking-wider text-rose-700">Prohibited</div>
+                <ul className="mt-1.5 space-y-1.5 text-xs text-muted">
+                  {stage.forbidden.map((item) => (
+                    <li key={item} className="flex items-start gap-1.5">
+                      <span className="text-rose-500 font-bold">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           ))}
         </div>
-      </section>
+      </ScrollReveal>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="card p-4">
-          <h2 className="text-sm font-medium">Valid events</h2>
-          <p className="mt-1 text-xs text-mist-400">
-            Old events are never overwritten. Only the following events may enter a VIN's chain.
+      {/* Safety controls & valid events */}
+      <ScrollReveal direction="up" delay={50} as="section" className="grid gap-6 lg:grid-cols-2">
+        <div className="card p-6 bg-white space-y-4">
+          <h2 className="text-base font-bold text-ink">Permitted Registry Event Schema</h2>
+          <p className="text-xs text-muted leading-relaxed">
+            Historical events are permanent and append-only. Only the following registered event types are valid for
+            inclusion in a chassis timeline.
           </p>
-          <ul className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 pt-2">
             {policy.eventTypes.map((event) => (
-              <li key={event.type} className="flex items-center justify-between gap-2 rounded border border-ink-800 px-2 py-1">
-                <span className="text-mist-300">{event.label}</span>
-                <span className="text-[0.68rem] uppercase tracking-wider text-mist-400">{event.category}</span>
-              </li>
+              <div
+                key={event.type}
+                className="flex items-center justify-between gap-2 rounded-xl border border-line bg-subtle/50 px-3.5 py-2.5 text-xs"
+              >
+                <span className="font-semibold text-ink">{event.label}</span>
+                <span className="capitalize text-muted font-medium">{event.category}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="card p-4">
-            <h2 className="text-sm font-medium">Controls that keep it healthy</h2>
-            <ul className="mt-3 space-y-2 text-sm text-mist-300">
-              <li>Vehicle funds do not release before handover conditions are met.</li>
-              <li>Inspection funds do not release before a complete report.</li>
-              <li>The seller does not choose the inspector.</li>
-              <li>Old events cannot be edited.</li>
-              <li>Odometer anomalies stay visible.</li>
-              <li>A dispute freezes both the receipt and the escrow.</li>
-              <li>Seller and workshop identities can be revoked.</li>
-              <li>Every vehicle page states that this record is a claim trail, not a title.</li>
-            </ul>
-          </div>
-          <div className="card p-4">
-            <h2 className="text-sm font-medium">Expansion halt thresholds</h2>
-            <ul className="mt-3 space-y-2 text-sm">
-              {Object.entries(policy.haltThresholds).map(([key, value]) => (
-                <li key={key} className="flex justify-between gap-3">
-                  <span className="text-mist-300">{key}</span>
-                  <span className="tabular-nums text-mist-400">{formatAmount(value)}</span>
+        <div className="space-y-6">
+          <div className="card p-6 bg-white space-y-4">
+            <h2 className="text-base font-bold text-ink">Systemic Integrity Controls</h2>
+            <ul className="space-y-2.5 text-xs text-body">
+              {CONTROLS.map((item) => (
+                <li key={item} className="flex items-start gap-2.5">
+                  <Icon name="shield" className="mt-0.5 h-4 w-4 shrink-0 text-slate-900" />
+                  <span>{item}</span>
                 </li>
               ))}
             </ul>
           </div>
-          <Notice tone="warn" title="Inspection reports">{policy.disclaimers?.reportNotWarranty}</Notice>
+
+          <div className="card p-6 bg-white space-y-4">
+            <h2 className="text-base font-bold text-ink">Expansion Halt Trigger Thresholds</h2>
+            <ul className="divide-y divide-line text-xs">
+              {Object.entries(policy.haltThresholds).map(([key, value]) => (
+                <li key={key} className="flex justify-between gap-3 py-2.5">
+                  <span className="text-body font-medium">{key}</span>
+                  <span className="font-bold tabular-nums text-ink">{formatAmount(value)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-      </section>
+      </ScrollReveal>
     </div>
   );
 }

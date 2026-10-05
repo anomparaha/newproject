@@ -27,29 +27,33 @@ export function VehiclePhoto({
   alt,
   className = '',
   rounded = 'rounded-xl',
+  badge = true,
 }: {
   seed: string;
   src?: string;
   alt: string;
   className?: string;
   rounded?: string;
+  badge?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const actual = !failed && src ? src : mockPhotoFor(seed);
   const isMock = !src || failed;
 
   return (
-    <div className={`relative overflow-hidden ${rounded} border border-ink-800 bg-ink-900 ${className}`}>
+    <div className={`relative overflow-hidden bg-subtle ${rounded} ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={actual}
         alt={alt}
         loading="lazy"
         onError={() => setFailed(true)}
-        className="h-full w-full object-cover"
+        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
-      {isMock ? (
-        <span className="absolute left-2 top-2 chip border-ink-600 bg-ink-950/70 text-mist-300">Photo placeholder</span>
+      {isMock && badge ? (
+        <span className="absolute bottom-2.5 left-2.5 rounded-full bg-white/90 px-2 py-0.5 text-[0.65rem] font-medium text-muted shadow-card backdrop-blur">
+          Photo placeholder
+        </span>
       ) : null}
     </div>
   );
