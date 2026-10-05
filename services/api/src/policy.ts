@@ -46,20 +46,20 @@ export const BONDS = {
 // ---------------------------------------------------------------------------
 
 export const PILOT_CORRIDOR: Omit<Corridor, 'openedAt'> & { openedAt: string } = {
-  id: 'cor_id_sg',
-  originCountry: 'ID',
-  destinationCountry: 'SG',
+  id: 'cor_ae_ke',
+  originCountry: 'AE',
+  destinationCountry: 'KE',
   minVehiclePriceUsd: 15_000,
   mandatoryInspection: true,
-  allowedCurrencies: ['USDC', 'IDR'],
+  allowedCurrencies: ['USDC', 'AED'],
   status: 'pilot',
   openedAt: '2026-01-15T00:00:00.000Z',
 };
 
 /** Candidate corridors: not served until the pilot corridor is healthy. */
 export const CANDIDATE_CORRIDORS = [
-  { originCountry: 'ID', destinationCountry: 'MY', reason: 'Waiting for the pilot corridor to stabilise' },
-  { originCountry: 'JP', destinationCountry: 'ID', reason: 'Japanese export: needs verified workshops in Japan' },
+  { originCountry: 'JP', destinationCountry: 'NZ', reason: 'Waiting for the pilot corridor to stabilise' },
+  { originCountry: 'DE', destinationCountry: 'GH', reason: 'European export: needs verified workshops in Germany' },
 ] as const;
 
 // ---------------------------------------------------------------------------

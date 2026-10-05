@@ -83,15 +83,15 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   // ---------------------------------------------------------------------
   const seller = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'seller',
-    displayName: 'Anoodize Motors (dealer, Jakarta)',
+    displayName: 'Meridian Motors (dealer, Dubai)',
     email: 'seller@vin.demo',
-    countryCode: 'ID',
-    city: 'Jakarta',
+    countryCode: 'AE',
+    city: 'Dubai',
     walletAddress: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM',
   });
   const buyer = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'buyer',
-    displayName: 'Straits Auto Pte Ltd (Singapore)',
+    displayName: 'Harbourline Auto Trading (Singapore)',
     email: 'buyer@vin.demo',
     countryCode: 'SG',
     city: 'Singapore',
@@ -99,24 +99,24 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
   });
   const inspector1 = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'inspector',
-    displayName: 'Nusantara Inspection Workshop',
+    displayName: 'Apex Vehicle Inspections',
     email: 'workshop1@vin.demo',
-    countryCode: 'ID',
-    city: 'Jakarta',
+    countryCode: 'AE',
+    city: 'Dubai',
   });
   const inspector2 = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'inspector',
-    displayName: 'Sahabat Motor (affiliated with Anoodize)',
+    displayName: 'Crescent Motors (affiliated with Meridian)',
     email: 'workshop2@vin.demo',
-    countryCode: 'ID',
-    city: 'Jakarta',
+    countryCode: 'AE',
+    city: 'Dubai',
   });
   const curator = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'curator',
-    displayName: 'ID-SG Corridor Curator',
+    displayName: 'Global Corridor Curator',
     email: 'curator@vin.demo',
-    countryCode: 'ID',
-    city: 'Jakarta',
+    countryCode: 'AE',
+    city: 'Dubai',
   });
   const arbiter = await call<{ actor: { id: string } }>(ctx, 'POST', '/api/actors', {
     role: 'arbiter',
@@ -161,10 +161,10 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     model: 'Alphard 2.5 G',
     year: 2021,
     odometerKm: 30000,
-    location: 'Jakarta Selatan, Indonesia',
+    location: 'Dubai, United Arab Emirates',
     priceAmount: '45000',
     priceCurrency: 'USDC',
-    shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
+    shippingTerms: 'FOB Jebel Ali, shipping paid by the buyer',
     photoHashes: [hash(1), hash(2), hash(3)],
     bond: { amount: '50', currency: 'USDC' },
   }, seller.actor.id);
@@ -176,10 +176,10 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     model: 'Land Cruiser 200',
     year: 2020,
     odometerKm: 68000,
-    location: 'Jakarta Barat, Indonesia',
+    location: 'Abu Dhabi, United Arab Emirates',
     priceAmount: '68000',
     priceCurrency: 'USDC',
-    shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
+    shippingTerms: 'FOB Jebel Ali, shipping paid by the buyer',
     photoHashes: [hash(4), hash(5)],
     bond: { amount: '50', currency: 'USDC' },
   }, seller.actor.id);
@@ -191,10 +191,10 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
     model: 'Vezel Hybrid Z',
     year: 2019,
     odometerKm: 52000,
-    location: 'Surabaya, Indonesia',
+    location: 'Sharjah, United Arab Emirates',
     priceAmount: '12000',
     priceCurrency: 'USD',
-    shippingTerms: 'FOB Surabaya',
+    shippingTerms: 'FOB Sharjah',
     photoHashes: [hash(6)],
   }, seller.actor.id);
 
@@ -215,7 +215,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectionFeeAmount: '150',
       escrowCurrency: 'USDC',
       inspectionDeadlineHours: 72,
-      handoverTerms: 'Handover at the Jakarta location + load proof; confirmation by both parties',
+      handoverTerms: 'Handover at the Dubai location + load proof; confirmation by both parties',
     },
     buyer.actor.id,
   );
@@ -285,7 +285,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectionFeeAmount: '150',
       escrowCurrency: 'USDC',
       inspectionDeadlineHours: 48,
-      handoverTerms: 'Handover at the Jakarta location; confirmation by both parties',
+      handoverTerms: 'Handover at the Dubai location; confirmation by both parties',
     },
     buyer.actor.id,
   );
@@ -352,7 +352,7 @@ async function runSeed(ctx: Ctx, db: ReturnType<typeof openDb>): Promise<void> {
       inspectionFeeAmount: '100',
       escrowCurrency: 'USDC',
       inspectionDeadlineHours: 96,
-      handoverTerms: 'Handover at the Surabaya location'
+      handoverTerms: 'Handover at the Sharjah location'
     },
     buyer.actor.id,
   );

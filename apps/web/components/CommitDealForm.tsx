@@ -26,7 +26,7 @@ export function CommitDealForm({ listing }: { listing: Listing }) {
   });
 
   useEffect(() => {
-    fetch('/api/inspectors?country=ID')
+    fetch('/api/inspectors?country=AE')
       .then((r) => (r.ok ? r.json() : { inspectors: [] }))
       .then((data: { inspectors: InspectorEntry[] }) => {
         setInspectors(data.inspectors);

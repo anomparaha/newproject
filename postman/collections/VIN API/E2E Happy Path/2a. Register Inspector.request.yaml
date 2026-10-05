@@ -17,8 +17,8 @@ body:
       "role": "inspector",
       "displayName": "E2E Fresh Inspector",
       "email": "e2e.inspector.{{$timestamp}}@vin.demo",
-      "countryCode": "ID",
-      "city": "Surabaya"
+      "countryCode": "AE",
+      "city": "Sharjah"
     }
 scripts:
   - type: afterResponse

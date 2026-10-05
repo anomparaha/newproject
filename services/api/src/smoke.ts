@@ -97,7 +97,12 @@ async function runChecks(base: string): Promise<void> {
   check('the VIN page states the claim boundary', typeof vin.claimsBoundary === 'string' && vin.claimsBoundary.includes('not a title'));
   check('the VIN page states the uniqueness boundary', typeof vin.notice === 'string' && vin.notice.includes('unique'));
 
-  const metrics = await fetch(`${base}/api/corridors/cor_id_sg/metrics`).then((r) => r.json() as Promise<Record<string, any>>);
+  // Read the corridor id instead of hard-coding it: the seeded corridor is a
+  // policy decision and has changed once already.
+  const corridorList = await fetch(`${base}/api/corridors`).then((r) => r.json() as Promise<Record<string, any>>);
+  const primaryCorridor = (corridorList.corridors ?? [])[0];
+  check('a corridor exists to measure', Boolean(primaryCorridor?.id));
+  const metrics = await fetch(`${base}/api/corridors/${primaryCorridor?.id}/metrics`).then((r) => r.json() as Promise<Record<string, any>>);
   check('corridor metrics are readable', typeof metrics.metrics?.dealsCompleted === 'number');
   check(
     'metrics include the three public numbers',
@@ -114,7 +119,7 @@ async function runChecks(base: string): Promise<void> {
     // A new unfunded deal: fund release must be rejected.
     const actors = await fetch(`${base}/api/demo/actors`).then((r) => r.json() as Promise<Record<string, any>>);
     const buyer = actors.actors?.find((a: { role: string }) => a.role === 'buyer');
-    const inspectors = await fetch(`${base}/api/inspectors?country=ID`).then((r) => r.json() as Promise<Record<string, any>>);
+    const inspectors = await fetch(`${base}/api/inspectors?country=AE`).then((r) => r.json() as Promise<Record<string, any>>);
     const inspector = inspectors.inspectors?.[0]?.actor;
 
     if (buyer && inspector && listing.status === 'listed') {
@@ -202,9 +207,9 @@ async function runChecks(base: string): Promise<void> {
   const demo = await fetch(`${base}/api/demo/actors`).then((r) => r.json() as Promise<Record<string, any>>);
   const seller = demo.actors?.find((a: { role: string }) => a.role === 'seller');
   const buyer = demo.actors?.find((a: { role: string }) => a.role === 'buyer');
-  const inspectorList = await fetch(`${base}/api/inspectors?country=ID`).then((r) => r.json() as Promise<Record<string, any>>);
+  const inspectorList = await fetch(`${base}/api/inspectors?country=AE`).then((r) => r.json() as Promise<Record<string, any>>);
   const workshop =
-    (inspectorList.inspectors ?? []).find((i: { actor: { displayName: string } }) => !i.actor.displayName.includes('Sahabat'))?.actor ??
+    (inspectorList.inspectors ?? []).find((i: { actor: { displayName: string } }) => !i.actor.displayName.includes('Crescent'))?.actor ??
     inspectorList.inspectors?.[0]?.actor;
 
   check('a seller, a buyer, and a workshop exist for the odometer regression', Boolean(seller && buyer && workshop), 'run npm run seed:reset');
@@ -224,10 +229,10 @@ async function runChecks(base: string): Promise<void> {
         model: 'Regression Fixture',
         year: 2020,
         odometerKm,
-        location: 'Jakarta, Indonesia',
+        location: 'Dubai, United Arab Emirates',
         priceAmount: '8000',
         priceCurrency: 'USDC',
-        shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
+        shippingTerms: 'FOB Jebel Ali, shipping paid by the buyer',
         photoHashes: [hex(200 + salt)],
       }, seller.id);
       return { status: res.status, body: (await res.json()) as Record<string, any> };
@@ -277,10 +282,10 @@ async function runChecks(base: string): Promise<void> {
         make: 'Toyota',
         model: 'Regression Fixture',
         year: 2020,
-        location: 'Jakarta, Indonesia',
+        location: 'Dubai, United Arab Emirates',
         priceAmount: '8000',
         priceCurrency: 'USDC',
-        shippingTerms: 'FOB Jakarta, shipping paid by the buyer',
+        shippingTerms: 'FOB Jebel Ali, shipping paid by the buyer',
         photoHashes: [hex(250)],
       }),
     });

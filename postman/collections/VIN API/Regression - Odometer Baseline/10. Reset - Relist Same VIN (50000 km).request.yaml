@@ -22,10 +22,10 @@ body:
       "model": "Regression Fixture",
       "year": 2020,
       "odometerKm": 50000,
-      "location": "Jakarta, Indonesia",
+      "location": "Dubai, United Arab Emirates",
       "priceAmount": "8000",
       "priceCurrency": "USDC",
-      "shippingTerms": "FOB Jakarta; buyer covers freight.",
+      "shippingTerms": "FOB Jebel Ali; buyer covers freight.",
       "photoHashes": ["{{sha256}}"]
     }
 scripts:

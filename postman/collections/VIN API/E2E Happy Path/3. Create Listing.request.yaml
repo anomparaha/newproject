@@ -22,10 +22,10 @@ body:
       "model": "Brio",
       "year": 2020,
       "odometerKm": 20000,
-      "location": "Jakarta, Indonesia",
+      "location": "Dubai, United Arab Emirates",
       "priceAmount": "9000",
       "priceCurrency": "USDC",
-      "shippingTerms": "FOB Jakarta; buyer covers ocean freight.",
+      "shippingTerms": "FOB Jebel Ali; buyer covers ocean freight.",
       "photoHashes": ["{{sha256}}"]
     }
 scripts:

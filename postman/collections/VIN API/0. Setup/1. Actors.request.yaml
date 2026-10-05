@@ -19,7 +19,7 @@ scripts:
       const curator = byRole('curator');
       const arbiter = byRole('arbiter');
       // Prefer a workshop that is NOT affiliated with the seller. The demo seed
-      // marks "Sahabat Motor" as affiliated, so skip any such name.
+      // marks "Crescent Motor" as affiliated, so skip any such name.
       const workshops = actors.filter((a) => a.role === 'inspector');
       const workshop = (workshops.find((a) => !/affiliat|sahabat/i.test(a.displayName || '')) || workshops[0] || {}).id || '';
 

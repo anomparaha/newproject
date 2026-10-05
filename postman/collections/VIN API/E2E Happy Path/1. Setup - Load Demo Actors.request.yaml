@@ -17,7 +17,7 @@ scripts:
       const seller = a.find(x => x.role === 'seller') || {};
       pm.collectionVariables.set('e2eSellerId', seller.id);
       // Pick an inspector that is NOT affiliated with the chosen seller.
-      // The demo seed affiliates "Sahabat Motor" with the seller, so prefer
+      // The demo seed affiliates "Crescent Motor" with the seller, so prefer
       // an inspector whose displayName does not mention "affiliated".
       const inspectors = a.filter(x => x.role === 'inspector');
       const nonAffiliated = inspectors.find(x => !/affiliat/i.test(x.displayName || '')) || inspectors[0] || {};

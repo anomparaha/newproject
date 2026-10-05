@@ -17,8 +17,8 @@ body:
       "role": "inspector",
       "displayName": "Dispute Inspector",
       "email": "dsp.inspector.{{$timestamp}}@vin.demo",
-      "countryCode": "ID",
-      "city": "Surabaya"
+      "countryCode": "AE",
+      "city": "Sharjah"
     }
 scripts:
   - type: afterResponse
