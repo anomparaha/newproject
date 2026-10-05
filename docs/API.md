@@ -94,8 +94,8 @@ SELLER=act_xxx ; BUYER=act_yyy ; INSP=insp_zzz ; LISTING=lst_aaa
 # 1. Penjual membuat listing dengan jaminan
 curl -s -X POST $API/listings -H 'content-type: application/json' -H "x-actor-id: $SELLER" -d '{
   "vin":"JTDKAMFU1M3123456","sellerId":"'"$SELLER"'","make":"Toyota","model":"Alphard",
-  "year":2021,"odometerKm":30000,"location":"Jakarta","priceAmount":"45000","priceCurrency":"USDC",
-  "shippingTerms":"FOB Jakarta","photoHashes":["'$(openssl rand -hex 32)'"],
+  "year":2021,"odometerKm":30000,"location":"Dubai","priceAmount":"45000","priceCurrency":"USDC",
+  "shippingTerms":"FOB Jebel Ali","photoHashes":["'$(openssl rand -hex 32)'"],
   "bond":{"amount":"50","currency":"USDC"}}'
 
 # 2. Pembeli mengunci deal

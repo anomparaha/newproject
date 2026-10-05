@@ -55,7 +55,7 @@ Konsekuensi teknis:
 - Dana kendaraan cair setelah syarat serah terima yang dikunci di awal terpenuhi.
 - Setiap pelepasan wajib menyertakan `evidenceEventIds`; provider melempar error bila kosong.
   Jadi mustahil melepas dana tanpa bukti yang bisa ditelusuri.
-- Aritmetika uang memakai **bilangan bulat terskala** (`BigInt`, skala 6 untuk USDC, 0 untuk IDR).
+- Aritmetika uang memakai **bilangan bulat terskala** (`BigInt`, skala 6 untuk USDC, 2 untuk USD/AED).
   Tidak ada float di jalur uang — lihat `packages/shared/src/money.ts` dan ujinya.
 
 ## 4. Peran dan pemisahan wewenang
