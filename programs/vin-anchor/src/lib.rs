@@ -677,6 +677,128 @@ pub mod vin_anchor {
         });
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // Fase 1: VIN registry (additive).
+    //
+    // A verbatim port of packages/shared/src/onchain-rules.ts section 2. Two
+    // invariants that the old escrow program could not enforce now live on-chain:
+    //   1. One VIN -> one active deal (record_reserve rejects a second reserve).
+    //   2. Odometer anomalies are measured against the HIGH-WATER mark, so a low
+    //      report can never reset the baseline (record_inspection).
+    // These instructions act on a standalone VinRecord PDA + a signer; wiring
+    // them into the DealState escrow flow is a separate, later step.
+    // -----------------------------------------------------------------------
+
+    /// Create the registry record for a VIN hash. `init` => exactly one per hash.
+    pub fn init_vin_record(ctx: Context<InitVinRecord>, vin_hash: [u8; 32], seller: Pubkey) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        record.vin_hash = vin_hash;
+        record.seller = seller;
+        record.last_odometer = 0;
+        record.max_odometer = 0;
+        record.has_odometer = false;
+        record.anomaly_pending = false;
+        record.events = 0;
+        record.listing_recorded = false;
+        record.reserved_by_deal = Pubkey::default();
+        record.completion_recorded = false;
+        record.dispute_open = false;
+        record.bump = ctx.bumps.vin_record;
+        Ok(())
+    }
+
+    /// Record the listing. Only the record owner (seller), and only once.
+    pub fn record_listing(ctx: Context<VinRecordMut>) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(!record.listing_recorded, VinError::ListingExists);
+        require!(ctx.accounts.signer.key() == record.seller, VinError::WrongSeller);
+        record.listing_recorded = true;
+        bump_events(record)
+    }
+
+    /// Reserve the VIN for one deal. REJECTS when already reserved: one VIN, one
+    /// active deal (the guard the old `open_deal` seeds could not provide).
+    pub fn record_reserve(ctx: Context<VinRecordMut>, deal_id: Pubkey) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(record.listing_recorded, VinError::NotListed);
+        require!(record.reserved_by_deal == Pubkey::default(), VinError::AlreadyReserved);
+        record.reserved_by_deal = deal_id;
+        bump_events(record)
+    }
+
+    /// Release the reserve. Only the deal that holds it may release it.
+    pub fn release_reserve(ctx: Context<VinRecordMut>, deal_id: Pubkey) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(record.reserved_by_deal == deal_id, VinError::NotReservedByDeal);
+        record.reserved_by_deal = Pubkey::default();
+        bump_events(record)
+    }
+
+    /// Record an inspection reading AND compute the anomaly from on-chain state.
+    /// `max_odometer` is a high-water mark: it only ever rises, so a low report
+    /// cannot hide a later gap.
+    pub fn record_inspection(
+        ctx: Context<VinRecordMut>,
+        deal_id: Pubkey,
+        odometer_km: u64,
+        report_hash: [u8; 32],
+    ) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(record.reserved_by_deal == deal_id, VinError::NotReservedByDeal);
+
+        let had_baseline = record.has_odometer;
+        let previous_max = record.max_odometer;
+        let anomaly = had_baseline && odometer_km < previous_max;
+
+        record.last_odometer = odometer_km;
+        record.max_odometer = if had_baseline { previous_max.max(odometer_km) } else { odometer_km };
+        record.has_odometer = true;
+        if anomaly {
+            record.anomaly_pending = true;
+            emit!(OdometerAnomaly {
+                vin_hash: record.vin_hash,
+                deal: deal_id,
+                odometer: odometer_km,
+                previous_max,
+                report_hash,
+            });
+        }
+        bump_events(record)
+    }
+
+    /// The buyer sees the warning. Required before a report may be accepted; it
+    /// clears the pending flag but never erases the emitted anomaly log.
+    pub fn acknowledge_anomaly(ctx: Context<VinRecordMut>) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(record.anomaly_pending, VinError::NoAnomaly);
+        record.anomaly_pending = false;
+        bump_events(record)
+    }
+
+    /// Mark the deal complete in the registry. Waits for the arbiter if frozen.
+    pub fn record_completion(ctx: Context<VinRecordMut>, deal_id: Pubkey) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(record.reserved_by_deal == deal_id, VinError::NotReservedByDeal);
+        require!(!record.dispute_open, VinError::RegistryDisputeOpen);
+        require!(!record.completion_recorded, VinError::CompletionExists);
+        record.completion_recorded = true;
+        bump_events(record)
+    }
+
+    pub fn record_dispute(ctx: Context<VinRecordMut>, deal_id: Pubkey) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(record.reserved_by_deal == deal_id, VinError::NotReservedByDeal);
+        record.dispute_open = true;
+        bump_events(record)
+    }
+
+    pub fn record_resolution(ctx: Context<VinRecordMut>) -> Result<()> {
+        let record = &mut ctx.accounts.vin_record;
+        require!(record.dispute_open, VinError::NoDispute);
+        record.dispute_open = false;
+        bump_events(record)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,4 +1342,93 @@ pub enum VinError {
     InvalidFeeDestination,
     #[msg("Fund split is not exact: the remainder would be stranded in the vault")]
     InexactSettlement,
+
+    // --- Fase 1 VIN registry ---
+    #[msg("A listing for this vinHash is already recorded")]
+    ListingExists,
+    #[msg("The seller does not match the record owner")]
+    WrongSeller,
+    #[msg("The listing is not recorded yet")]
+    NotListed,
+    #[msg("This VIN is already locked by an active deal")]
+    AlreadyReserved,
+    #[msg("This deal does not hold the VIN reserve")]
+    NotReservedByDeal,
+    #[msg("There is no pending anomaly to acknowledge")]
+    NoAnomaly,
+    #[msg("Completion is already recorded")]
+    CompletionExists,
+    #[msg("A dispute is still open; completion waits for the arbiter ruling")]
+    RegistryDisputeOpen,
+    #[msg("There is no open dispute")]
+    NoDispute,
+}
+
+// ---------------------------------------------------------------------------
+// Fase 1: VIN registry — account, contexts, event, and helper (additive)
+// ---------------------------------------------------------------------------
+
+/// Append-only: the event counter on a VIN record only ever grows.
+fn bump_events(record: &mut VinRecord) -> Result<()> {
+    record.events = record.events.checked_add(1).ok_or(VinError::MathOverflow)?;
+    Ok(())
+}
+
+#[account]
+pub struct VinRecord {
+    /// Registry key: the normalised VIN hash, never the raw VIN.
+    pub vin_hash: [u8; 32],
+    pub seller: Pubkey,
+    /// Most recent reading (history view).
+    pub last_odometer: u64,
+    /// Highest reading ever recorded — the anomaly BASELINE; only ever rises.
+    pub max_odometer: u64,
+    /// Whether any reading exists yet (u64 has no null).
+    pub has_odometer: bool,
+    /// An anomaly the buyer must acknowledge before a report may be accepted.
+    pub anomaly_pending: bool,
+    /// Number of registry events ever written; append-only.
+    pub events: u32,
+    pub listing_recorded: bool,
+    /// The deal that currently holds this VIN. `Pubkey::default()` == free.
+    pub reserved_by_deal: Pubkey,
+    pub completion_recorded: bool,
+    pub dispute_open: bool,
+    pub bump: u8,
+}
+
+impl VinRecord {
+    pub const LEN: usize = 8 + 32 + 32 + 8 + 8 + 1 + 1 + 4 + 1 + 32 + 1 + 1 + 1;
+}
+
+#[derive(Accounts)]
+#[instruction(vin_hash: [u8; 32])]
+pub struct InitVinRecord<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        init,
+        payer = payer,
+        space = VinRecord::LEN,
+        seeds = [b"vin", vin_hash.as_ref()],
+        bump
+    )]
+    pub vin_record: Account<'info, VinRecord>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct VinRecordMut<'info> {
+    pub signer: Signer<'info>,
+    #[account(mut, seeds = [b"vin", vin_record.vin_hash.as_ref()], bump = vin_record.bump)]
+    pub vin_record: Account<'info, VinRecord>,
+}
+
+#[event]
+pub struct OdometerAnomaly {
+    pub vin_hash: [u8; 32],
+    pub deal: Pubkey,
+    pub odometer: u64,
+    pub previous_max: u64,
+    pub report_hash: [u8; 32],
 }

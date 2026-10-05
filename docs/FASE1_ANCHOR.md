@@ -165,8 +165,10 @@ Fase 1 harus menutupnya di on-chain juga.
 ## 8. Definisi selesai (Fase 1)
 
 - [ ] `DealState` menggantikan tiga bool; tabel transisi `DEAL_ORDER` dikodekan di Rust.
-- [ ] `VinRecord` + delapan instruksi registry berjalan di devnet.
-- [ ] Gerbang `max_odometer` dan `anomaly_pending` di on-chain.
+- [x] `VinRecord` + sembilan instruksi registry diimplementasikan di `lib.rs` (aditif: init_vin_record,
+      record_listing, record_reserve, release_reserve, record_inspection, acknowledge_anomaly,
+      record_completion, record_dispute, record_resolution). Type-check hijau via `cargo check` host; SBF/devnet lewat CI.
+- [x] Gerbang `max_odometer` (high-water) dan `anomaly_pending` di on-chain, plus event `OdometerAnomaly`.
 - [ ] Kasus uji 1–19 hijau, dan **kasus 12 & 14 terbukti merah** sebelum perbaikannya.
 - [ ] `anchor build && anchor test` hijau di CI (`.github/workflows/anchor.yml`).
 - [ ] `declare_id!` diganti dengan program ID devnet yang sebenarnya.
@@ -184,9 +186,15 @@ Sengaja ditunda supaya permukaan audit tetap kecil:
 
 ## 10. Catatan lingkungan
 
-Toolchain Rust + Solana **tidak tersedia** di sandbox pengembangan yang dipakai untuk menulis
-dokumen ini, jadi Fase 1 tidak bisa dikompilasi di sana. Yang harus dijalankan di mesin/CI yang
-punya toolchain:
+Status toolchain (diperbarui): WSL Ubuntu sudah punya `solana-cli 2.3.2`, `anchor-cli 0.30.1`, dan
+`rustc 1.88` host. Modul registry Fase 1 **type-check hijau** lewat `cargo check` host
+(`programs/vin-anchor`, selesai tanpa error — hanya warning `cfg(anchor-debug)` yang jinak).
+NAMUN `anchor build` SBF penuh **belum** bisa jalan di mesin ini: platform-tools SBF yang terpasang
+membawa `cargo 1.75`, sedangkan pohon dependensi sekarang (mis. `toml_edit 0.25.15`) menuntut fitur
+`edition2024` (butuh cargo ≥1.85). Ini blocker **lingkungan** (bukan kode) yang juga menghalangi
+program lama; perbaikannya adalah memperbarui platform-tools Solana atau menjalankan di CI.
+
+Yang harus dijalankan di mesin/CI dengan platform-tools yang cocok:
 
 ```bash
 cd programs/vin-anchor
