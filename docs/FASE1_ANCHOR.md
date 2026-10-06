@@ -16,7 +16,7 @@ Target akhir Fase 1 (dari `SPEC_RECONCILIATION.md`):
 4. Cabang sengketa dengan pembagian dana yang **tepat habis** (tidak ada dana tersangkut).
 5. `record_note` hanya boleh setelah dana kendaraan benar-benar lepas.
 
-Alasan urutan ini: perilakunya **sudah terkunci uji** di sisi TypeScript (41 uji, termasuk uji
+Alasan urutan ini: perilakunya **sudah terkunci uji** di sisi TypeScript (63 uji, termasuk uji
 properti). Fase 1 memindahkan aturan yang sudah tetap itu ke Rust, bukan menemukan aturan baru.
 
 ## 2. Yang sudah ada di program sekarang

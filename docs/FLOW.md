@@ -4,7 +4,8 @@ Dokumen ini menjawab satu pertanyaan: **kalau program Anchor ini berjalan, uang 
 siapa memanggil apa, dan apa yang dijaga.**
 
 > Status: alur di bawah adalah **rancangan yang sudah dikodekan** di `programs/vin-anchor/src/lib.rs`.
-> Program belum dikompilasi/di-deploy, dan API saat ini masih memakai `MockEscrowProvider`.
+> Program sudah dikompilasi dan 17 uji Anchor-nya hijau di CI, tetapi **belum di-deploy** ke
+> cluster mana pun, dan API saat ini masih memakai `MockEscrowProvider`.
 > Jadi ini "alur yang siap", bukan "alur yang sedang berjalan". Lihat `docs/PROGRAM.md` §7.
 
 ---
@@ -186,8 +187,8 @@ Itu pekerjaan besar dan belum dilakukan.
 Cara menjalankan:
 
 ```bash
-npm test                                     # aturan: 22 uji (jalan sekarang)
-cd programs/vin-anchor && anchor build && anchor test   # implementasi: 11 kasus
+npm test                                     # aturan: 63 uji (jalan sekarang)
+cd programs/vin-anchor && anchor build && anchor test   # implementasi: 17 kasus (juga jalan di CI)
 ```
 
 ## 9. Yang berubah di alur ini karena review terakhir

@@ -3,6 +3,11 @@
 > **Ini bukan nasihat hukum.** Dokumen ini mencatat batas yang harus dipegang produk, beserta rujukan
 > yang perlu diverifikasi ulang oleh penasihat hukum sebelum uang nyata bergerak. Regulasi berubah;
 > status izin penyelenggara punya syarat yang tidak bisa disimpulkan dari artikel.
+>
+> **Catatan koridor (penting).** Analisis di §2 disusun untuk **entitas Indonesia** (OJK, Bank
+> Indonesia, rupiah). Koridor pilot di kode sekarang **AE → KE** (`PILOT_CORRIDOR` di
+> `services/api/src/policy.ts`), jadi izin lintas-negara, escrow berizin, dan KYB untuk koridor itu
+> **belum** tercakup dokumen ini dan wajib ditinjau terpisah sebelum uang nyata bergerak.
 
 ## 1. Yang VIN klaim, dan yang tidak
 

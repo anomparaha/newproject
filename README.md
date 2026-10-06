@@ -21,13 +21,18 @@ Stated up front, so nothing here is an overclaim:
 - **The full flow passes an integration test**: listing → escrow → inspection → report → buyer
   acceptance → handover → vehicle fund release → receipt recorded, plus one **odometer anomaly**
   case that ends in a **dispute** with the **bond slashed** (`npm run seed:reset`).
-- **41 tests** (`npm test`): 11 core rules tests (decimal money arithmetic, the state machine,
+- **63 tests** (`npm test`): 11 core rules tests (decimal money arithmetic, the state machine,
   release preconditions, odometer anomalies, bond slashing) + **11 property tests** for the escrow
   ledger model (thousands of random combinations: over-release, double refund, an inexact ruling,
   a freeze bypass, and a deal that must complete before a receipt can be recorded) + **19 on-chain
   rule tests** produced by reconciling against the five-contract design spec: the mandatory call
   order (anything out of order is rejected), one deal per VIN, odometer anomalies computed from the
   highest point and not resettable by a lower reading, and the handover confirmation window.
+  The remaining 22 cover authentication (SIWS: real ed25519 keypairs, replay, expiry, revocation,
+  demo-mode rejection), content-addressed evidence storage, and three anti-regression guards.
+- **The Anchor program is compiled and tested in CI**: `anchor build`, the SBF stack-frame gate,
+  and `anchor test` (17 tests: 13 escrow/state-machine cases + 4 VIN registry cases) all pass.
+  Nothing is deployed yet - `declare_id!` is still the placeholder.
 - Next.js frontend: dashboard, listings, deal console, VIN page, inspection market, corridors, and
   policy. The action buttons (fund escrow, upload a report, accept a report, handover, release
   funds, open a dispute, arbiter ruling) call the real API.
@@ -174,6 +179,9 @@ Work breakdown, gates, and the mainnet checklist: **`docs/ROADMAP.md`**.
 
 ## 8. Other documents
 
+- `docs/KONSEP.md` — **the concept in one place**: the ten non-negotiable rules with where each is
+  enforced and tested, roles and authority, money, the real state of the build, and the open
+  decisions. Start here.
 - `docs/ARCHITECTURE.md` — architecture, data model, money flow, security.
 - `docs/TECH_STACK.md` — tech choices + the Rust/Go answer.
 - `docs/API.md` — endpoint reference.
@@ -188,6 +196,12 @@ Work breakdown, gates, and the mainnet checklist: **`docs/ROADMAP.md`**.
 - `docs/DEPLOYMENT.md` — MVP deployment, real-money readiness, and how to turn on the on-chain path.
 - `docs/FASE1_ANCHOR.md` — **the Phase 1 spec**: explicit `DealState`, the VIN registry, the
   `maxOdometer` gate, and the test cases that must go red before they go green.
+- `docs/SIWS.md` — sign-in: the nonce/signature/session flow, the properties under test, demo mode
+  versus session-only mode, and what is deliberately not built.
+- `docs/LOCAL_TEST.md` — how to run the Anchor and SIWS checks on your own machine, plus the traps
+  already paid for (stale SQLite inode after `seed:reset`, `next/font` needing network).
+- `docs/COLLECTION.md` — the Postman collection: folders, variables, and how to prove a regression
+  folder is red on pre-fix code.
 - `docs/LEGAL.md` — legal boundaries, compliance, and what must **not** be published.
 
 ## 9. Repo hygiene

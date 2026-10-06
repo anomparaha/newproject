@@ -13,10 +13,12 @@ menambah fitur atau menambah utilitas token.
 - [x] API: aktor, koridor, listing, deal, escrow dua leg, laporan, anomali, serah terima, nota, sengketa, reputasi.
 - [x] Frontend: dasbor, listing, konsol deal, halaman VIN, pasar inspeksi, koridor, kebijakan.
 - [x] Event log append-only dengan nomor urut per VIN.
-- [x] 11 uji aturan inti + seed yang berfungsi sebagai uji integrasi alur penuh.
-- [x] Program Anchor (belum dikompilasi): escrow dua vault, jaminan, arbiter, registri nota.
-      Uji siap-jalan + temuan review: `docs/PROGRAM.md`. Perbandingan dengan rancangan
-      lima-kontrak + urutan adopsi: `docs/SPEC_RECONCILIATION.md`.
+- [x] 63 uji (`npm test`) + seed yang berfungsi sebagai uji integrasi alur penuh.
+- [x] Program Anchor (28 instruksi): escrow dua vault, jaminan, arbiter, registri VIN + nota.
+      **Dikompilasi + diuji di CI**: `anchor build`, gerbang frame SBF, dan `anchor test`
+      17/17 hijau (run `37395502737`). Belum di-deploy. Referensi + temuan review:
+      `docs/PROGRAM.md`. Perbandingan dengan rancangan enam kontrak + urutan adopsi:
+      `docs/SPEC_RECONCILIATION.md`, spesifikasi Fase 1: `docs/FASE1_ANCHOR.md`.
 
 **Belum ada**
 
@@ -37,7 +39,7 @@ menambah fitur atau menambah utilitas token.
 
 **Tujuan:** membuktikan kendaraan fisik benar-benar selesai, bukan membuktikan tokennya laku.
 
-Lingkup: satu koridor (mis. ID → SG), inspeksi wajib, escrow wajib, riwayat VIN menyala,
+Lingkup: satu koridor (mis. AE → KE, sesuai `PILOT_CORRIDOR` di kode), inspeksi wajib, escrow wajib, riwayat VIN menyala,
 NFT nota hanya untuk deal selesai, **belum ada penjualan token ke publik**, jaminan dalam stablecoin.
 
 Pekerjaan:

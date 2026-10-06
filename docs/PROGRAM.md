@@ -82,7 +82,8 @@ memakai angka dan skenario yang sama supaya perbedaannya langsung terlihat.
 
 ```bash
 # Aturan (jalan sekarang, tanpa toolchain Solana)
-npm test        # 22 uji: 11 aturan inti + 11 uji properti/skenario ledger
+npm test        # 63 uji: 11 aturan inti + 11 properti ledger + 19 aturan on-chain
+                #         + 14 SIWS + 5 penyimpanan bukti + 3 penjaga regresi
 
 # Implementasi (butuh toolchain Solana)
 cd programs/vin-anchor && anchor build && anchor test

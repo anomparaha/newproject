@@ -1,10 +1,10 @@
 # Rekonsiliasi Spesifikasi: Alur Rancangan Lima-Kontrak vs Implementasi Program
 
-Dokumen ini membandingkan **spesifikasi alur yang Anda tulis** (enam kontrak terpisah: `VinRegistry`, `ListingEscrow`, `InspectionEscrow`, `NoteNft`, `StakeVault`, `AccessController`) dengan **program Anchor yang ada di repo ini** (`programs/vin-anchor/src/lib.rs`, 14 instruksi) beserta model aturan yang sudah diuji.
+Dokumen ini membandingkan **spesifikasi alur yang Anda tulis** (enam kontrak terpisah: `VinRegistry`, `ListingEscrow`, `InspectionEscrow`, `NoteNft`, `StakeVault`, `AccessController`) dengan **program Anchor yang ada di repo ini** (`programs/vin-anchor/src/lib.rs`, 28 instruksi) beserta model aturan yang sudah diuji.
 
-> Status kejujuran: spesifikasi Anda adalah **rancangan**, bukan kode produksi dan bukan opini hukum. Program di repo ini **belum pernah dikompilasi** (`anchor build` belum jalan di lingkungan ini); yang sudah benar-benar dijalankan dan diuji adalah **model aturan TypeScript** di `packages/shared`. Karena itu perbandingan ini disusun sebagai *perbedaan desain + rekomendasi*, bukan klaim bahwa salah satu sisi sudah siap mainnet.
+> Status kejujuran: spesifikasi Anda adalah **rancangan**, bukan kode produksi dan bukan opini hukum. Program di repo ini **sudah dikompilasi dan diuji di CI** (`anchor build` + gerbang frame SBF + `anchor test` 17/17 hijau, run `37395502737`), tetapi **belum pernah di-deploy** ke cluster mana pun. Yang juga berjalan di mesin mana pun: **63 uji aturan TypeScript** (`npm test`) di `packages/shared` dan `services/api`. Karena itu perbandingan ini disusun sebagai *perbedaan desain + rekomendasi*, bukan klaim bahwa salah satu sisi sudah siap mainnet.
 
-Ringkasan singkat: **spesifikasi Anda lebih kuat sebagai target arsitektur** (pengaman peran berbasis waktu, pemisahan fee, registry event-first, jendela konfirmasi serah-terima). **Program sekarang lebih kuat pada pembukuan** (penyelesaian sengketa exact-accounting + 22 uji properti sebagai bukti eksekusi). Rekomendasi: **adopsi bertahap 4 fase** — jangan tulis ulang dari nol.
+Ringkasan singkat: **spesifikasi Anda lebih kuat sebagai target arsitektur** (pengaman peran berbasis waktu, pemisahan fee, registry event-first, jendela konfirmasi serah-terima). **Program sekarang lebih kuat pada pembukuan** (penyelesaian sengketa exact-accounting + 17 uji Anchor hijau di CI + uji properti sebagai bukti eksekusi). Rekomendasi: **adopsi bertahap 4 fase** — jangan tulis ulang dari nol.
 
 ---
 
@@ -12,7 +12,7 @@ Ringkasan singkat: **spesifikasi Anda lebih kuat sebagai target arsitektur** (pe
 
 | # | Area | Spesifikasi yang Anda berikan | Implementasi di repo sekarang | Dampak |
 |---|---|---|---|---|
-| 1 | **Jumlah kontrak** | 6 kontrak terpisah, registry di tengah | 1 program monolitik, 14 instruksi | Isolasi kegagalan & audit lebih mudah di 6 kontrak; monolitik lebih cepat jalan dan tidak butuh CPI antar-program (CPI antar-program Solana menambah kompleksitas dan permukaan bug) |
+| 1 | **Jumlah kontrak** | 6 kontrak terpisah, registry di tengah | 1 program monolitik, 28 instruksi | Isolasi kegagalan & audit lebih mudah di 6 kontrak; monolitik lebih cepat jalan dan tidak butuh CPI antar-program (CPI antar-program Solana menambah kompleksitas dan permukaan bug) |
 | 2 | **Peran & waktu** | `AccessController`: `OPERATOR`, `ARBITER`, `PAUSER`, `UPGRADER` **berbasis waktu** (kedaluwarsa) | 1 `config.admin` tunggal, tanpa masa berlaku | Spesifikasi Anda jauh lebih baik: rotasi kunci otomatis, hak akses tidak abadi |
 | 3 | **Pause** | `PAUSER` hanya bisa menghentikan `deposit`/`release`/`mintNote`, **tidak boleh menulis ulang registry** | `config.paused` satu saklar yang memblokir lebih luas | Peran PAUSER yang sempit = risiko penyalahgunaan jauh lebih kecil |
 | 4 | **Arbitrase** | Bukan satu kunci: 2-dari-3 penandatangan atau modul arbitrase terdaftar | `config.arbiter` satu kunci (bisa multiprisig di luar chain) | 2-dari-3 lebih kuat; versi sekarang hanya sekuat disiplin pengelola kunci |
@@ -53,7 +53,7 @@ Ditulis khusus karena keduanya **tidak akan terlihat di uji integrasi biasa** da
 | Kepemilikan kunci rilis | **Spesifikasi Anda** | Tanpa hot key platform; `release` permissionless |
 | Penyelesaian sengketa | **Implementasi repo** | Exact-accounting, teruji properti, membayar bengkel yang benar-benar bekerja |
 | Pemisahan kontrak | **Implementasi repo** (jangka pendek) / **Spesifikasi** (jangka panjang) | Monolitik tanpa CPI lebih cepat dan lebih sedikit bug; 6 kontrak lebih mudah diaudit tapi lebih mahal |
-| Bisa diuji sekarang | **Implementasi repo** | 41 uji di `npm test`; Rust belum pernah dikompilasi |
+| Bisa diuji sekarang | **Implementasi repo** | 63 uji di `npm test`; program Rust dikompilasi + 17 uji Anchor hijau di CI (belum di-deploy) |
 
 ## 4. Yang Belum Ada di Kedua Sisi (harus diputuskan sebelum mainnet)
 
@@ -83,6 +83,6 @@ Ditulis khusus karena keduanya **tidak akan terlihat di uji integrasi biasa** da
 |---|---|
 | `packages/shared/src/onchain-rules.ts` | Model eksekusi: `STAGE`, `DEAL_ORDER`, `applyCall`, `canRelease`, registry `recordInspection`/`acknowledgeAnomaly` (anomali dihitung di dalam model) |
 | `packages/shared/tests/onchain-rules.test.ts` | 19 uji: urutan (termasuk properti), aktor salah, sengketa membekukan, jendela konfirmasi (properti), one-VIN-one-deal, `maxOdometer` tidak bisa direset (properti), append-only (properti) |
-| `programs/vin-anchor/src/lib.rs` | Program Anchor 14 instruksi — target terjemahan Fase 1 |
+| `programs/vin-anchor/src/lib.rs` | Program Anchor 28 instruksi — target terjemahan Fase 1 |
 | `docs/FLOW.md` | Alur program yang ada saat ini, langkah demi langkah |
 | `docs/PROGRAM.md` | Referensi akun/PDA/invarian/46+ penjagaan program |
