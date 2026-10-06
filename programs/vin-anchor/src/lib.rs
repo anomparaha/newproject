@@ -478,6 +478,14 @@ pub mod vin_anchor {
     pub fn refund_leg(ctx: Context<RefundLeg>, leg: u8, evidence_hash: [u8; 32]) -> Result<()> {
         let deal = &mut ctx.accounts.deal;
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
+        // A frozen (disputed) deal must not be refunded by the relayer: while a
+        // dispute is open, only the arbiter's `resolve_dispute` may move those
+        // funds. `release_leg` kept this check when the boolean flags became
+        // DealState; `refund_leg` did not, so a relayer could refund a frozen
+        // deal, drain a vault and push the deal to Cancelled before the ruling.
+        // Test 6 exists to catch exactly that, and it failed in CI until this
+        // line came back: refund_leg must fail closed the same way release_leg does.
+        require!(!deal.dispute_open && deal.state != DealState::Frozen, VinError::DealFrozen);
         require!(deal.state != DealState::Noted && deal.state != DealState::Cancelled, VinError::OutOfOrder);
 
         let (vault, amount) = match leg {
