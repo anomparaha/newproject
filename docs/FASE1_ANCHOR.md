@@ -188,8 +188,11 @@ Fase 1 harus menutupnya di on-chain juga.
 - [x] Kasus uji 1–19 **ditulis** dan lulus pemeriksaan sintaks TypeScript: kasus 1–11, 15, 17 di
       `tests/vin_anchor.ts`; kasus 12–14 di `tests/vin_registry.ts`; kasus 16 tercakup kasus 6,
       kasus 18 oleh pemeriksaan idempoten di kasus 10, kasus 19 oleh kasus 7.
-- [ ] Kasus uji 1–19 **hijau saat dijalankan** (butuh IDL dari `anchor build` penuh → dijalankan di CI, lihat §10).
-- [ ] `anchor build && anchor test` **penuh** hijau di CI (`.github/workflows/anchor.yml`).
+- [x] Kasus uji 1–19 **hijau saat dijalankan** di CI (localnet, kedua file test dijalankan sekaligus):
+      17 test, 17 lulus — run `37395502737` pada commit `21d8c41`. Sebelumnya run `37394675529`
+      pada `f6178bd` merah (14 lulus, 3 gagal); penyebab dan perbaikannya ada di §11.
+- [x] `anchor build && anchor test` **penuh** hijau di CI (`.github/workflows/anchor.yml`), termasuk
+      gerbang frame SBF. Bukti: run `37395502737` (job `anchor build + anchor test`: success).
 - [ ] `declare_id!` diganti dengan program ID devnet yang sebenarnya (sekarang masih placeholder
       `anchor init`; `tests/*.ts` memakai ID yang sama agar konsisten di localnet).
 - [ ] `AnchorEscrowProvider` di `services/api/src/escrow.ts` diimplementasikan, dan smoke test
@@ -234,3 +237,38 @@ anchor test            # atau: anchor test --skip-build setelah build
 
 Selama perintah itu belum hijau, **jangan** mengklaim apa pun tentang dana on-chain — termasuk di
 dokumentasi pemasaran.
+
+Catatan: sejak `21d8c41`, CI sudah **hijau penuh** untuk `anchor build` + `anchor test` (run
+`37395502737`, 17/17 test). Yang masih terblokir hanya di mesin WSL ini (generasi IDL karena
+proc-macro `ark-bn254` vs host `rustc 1.88`), bukan di CI.
+
+## 11. Regresi yang tertangkap CI (dan pelajarannya)
+
+Run CI pertama untuk refactor `DealState` (`f6178bd`) **merah**: 14 lulus, 3 gagal. Akarnya satu
+baris yang hilang. Refactor mengubah tiga bool (`frozen`, `completed`, `cancelled`) menjadi enum,
+dan `require!(!deal.frozen, DealFrozen)` di `release_leg` diganti dengan padanan state-nya — tetapi
+di `refund_leg` penggantinya (`state != Noted && state != Cancelled`) justru **mengizinkan** Frozen.
+
+Akibatnya: saat sengketa terbuka, relayer bisa mengembalikan dana ke pembeli, mengosongkan vault,
+dan membuat deal menjadi `Cancelled` sebelum arbiter memutus — persis lubang yang dijaga test 6
+("a frozen deal rejects release_leg AND refund_leg"). Test 7 dan 8 gagal sebagai **efek berantai**
+dari refund nyasar itu (state sudah `Cancelled`, sehingga `resolve_dispute` → `OutOfOrder`), jadi
+tidak ada asersi yang perlu dilunakkan.
+
+Perbaikan (`21d8c41`) mengembalikan satu gerbang itu di `refund_leg`, sejajar dengan `release_leg`.
+Semua `require!` yang dihapus refactor diaudit satu per satu dan dipetakan ke penggantinya; hanya
+yang ini yang tidak punya padanan:
+
+| `require!` lama | Fungsi lama | Padanan baru |
+| --- | --- | --- |
+| `!deal.frozen` | `fund_leg` | `!dispute_open` + `require_state(Reserved/Funded)` (lebih ketat) |
+| `!deal.frozen` | `release_leg` | `!dispute_open && state != Frozen` |
+| `!deal.frozen` | `refund_leg` | **hilang → dikembalikan di `21d8c41`** |
+| `deal.frozen` | `resolve_dispute` | `require_state(Frozen)` |
+| `completed \|\| cancelled` | `record_note` | `require_state(Released)` |
+
+Pelajaran yang saya pakai lagi ke depan: saat mengubah representasi state, petakan **setiap**
+`require!` yang hilang ke penggantinya, dan biarkan CI menjalankan suite — bukan hanya type-check.
+Sisa celah sejenis berikutnya (belum diperbaiki, keputusan pemilik): `refund_leg` tidak dibatasi
+oleh state, sehingga refund setelah `HandoverConfirmed` masih mungkin; sebelum itu diubah, tambahkan
+test-nya lebih dulu.

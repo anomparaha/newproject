@@ -172,3 +172,26 @@ Yang diharapkan: `400 PROFILE_REQUIRED` → `201` → `200` → `409 CHALLENGE_U
 Di browser: buka aplikasi → **Sign in** → **Connect wallet**. Kalau ekstensi
 Phantom/Solflare/Backpack ada, akan muncul satu permintaan tanda tangan. Kalau tidak ada,
 pakai **demo binding** (aplikasi akan mengatakan bahwa itu tanpa tanda tangan).
+
+---
+
+## 8. Jebakan yang sudah pernah menggigit
+
+**`seed:reset` mengganti berkas basis data; API yang sedang berjalan tidak melihatnya.** Proses API
+memegang inode lama, jadi setelah reset ia terus membaca data demo yang sudah dibuang. Gejalanya
+menyesatkan: koleksi Postman gagal di asersi data seed ("all demo roles captured", "a cancelled deal
+was captured") seolah-olah seed berubah — padahal seed-nya sehat.
+
+Urutan yang benar: `seed:reset` **lalu** (re)start API, atau hentikan API dulu, reset, baru jalankan
+lagi. Kalau ragu, cek langsung isi basis datanya:
+
+```bash
+node -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('.data/vin.db');\
+console.log(db.prepare('SELECT role, COUNT(*) c FROM actors GROUP BY role').all());\
+console.log(db.prepare('SELECT state, COUNT(*) c FROM deals GROUP BY state').all());"
+```
+
+**Build web butuh internet.** `apps/web/app/layout.tsx` memakai `next/font/google` (Inter), sehingga
+`npm run build --workspace @vin/web` gagal di lingkungan tanpa akses Google Fonts
+(`Failed to fetch Inter`). CI punya akses, jadi hijau di sana; untuk build yang hermetis, pindahkan
+font ke `next/font/local` dan simpan berkasnya di repo.
