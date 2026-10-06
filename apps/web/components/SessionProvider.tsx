@@ -21,9 +21,11 @@ import {
  *    exists; the API accepts it only while VIN_DEMO_MODE is on. This is what
  *    makes the seeded flow clickable without a wallet extension.
  *
- * The token is kept in localStorage. For this demo that is acceptable; a
- * production build should put it in an httpOnly cookie, and the comment here
- * exists so nobody mistakes it for a deliberate choice.
+ * The session token is held ONLY in memory for the active tab and is never
+ * written to localStorage, so an XSS cannot exfiltrate a long-lived session.
+ * Across reloads the httpOnly `vin_session` cookie the API sets on sign-in is
+ * what re-authenticates (sent automatically on same-origin /api/* calls); the
+ * in-memory Bearer header is a same-tab fallback only.
  */
 export interface Session {
   /** How the user got in. */
@@ -130,8 +132,17 @@ const SessionContext = createContext<SessionState>({
 
 function persist(session: Session | null): void {
   if (typeof window === 'undefined') return;
-  if (session) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  else window.localStorage.removeItem(STORAGE_KEY);
+  if (session) {
+    // The token is deliberately stripped before persisting: it lives only in
+    // memory for this tab. After a reload the httpOnly `vin_session` cookie
+    // re-authenticates, so the token never sits in JS-reachable storage where
+    // an XSS could read it.
+    const safe: Session = { ...session };
+    delete safe.token;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
+  } else {
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -166,22 +177,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // A token can be revoked or expire while the tab is open. Ask the API who we
-  // are and drop the session if the answer is "nobody".
+  // A real session can be revoked or expire while the tab is open, and after a
+  // reload the in-memory token is gone — so we re-check through the httpOnly
+  // cookie. Ask the API who we are and drop a real session if it is "nobody".
+  // Demo bindings have no server session, so they skip this.
   useEffect(() => {
-    const token = session?.token;
-    if (!ready || !token) return;
+    if (!ready || !session || session.demoBinding) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/auth/session', { headers: { authorization: `Bearer ${token}` } });
+        // The cookie travels on same-origin requests; the in-memory Bearer is a
+        // same-tab fallback. The API accepts either (sessionToken = Bearer ?? cookie).
+        const headers: Record<string, string> = session.token
+          ? { authorization: `Bearer ${session.token}` }
+          : {};
+        const res = await fetch('/api/auth/session', { credentials: 'include', headers });
         if (res.ok || cancelled) return;
-        const next = { ...session } as Session;
-        delete next.token;
-        delete next.expiresAt;
-        delete next.actorId;
-        setSessionState(next.demoBinding ? next : null);
-        persist(next.demoBinding ? next : null);
+        setSessionState(null);
+        persist(null);
       } catch {
         /* offline: keep the session; the next write will fail loudly */
       }
@@ -190,7 +203,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, session?.token]);
+  }, [ready, session?.actorId, session?.demoBinding]);
 
   const walletAvailable = useCallback((walletId = 'phantom') => Boolean(detectWallet(walletId)), []);
 
@@ -229,6 +242,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const verifyRes = await fetch('/api/auth/verify', {
         method: 'POST',
+        // `include` so the httpOnly `vin_session` cookie the API sets on this
+        // response is stored by the browser for later same-origin requests.
+        credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           walletAddress: address,
@@ -295,8 +311,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    // Tell the API to revoke the session and clear the httpOnly cookie. Send the
+    // cookie (credentials) and, if it is still in memory, the Bearer too.
     const token = session?.token;
-    if (token) void fetch('/api/auth/signout', { method: 'POST', headers: { authorization: `Bearer ${token}` } });
+    void fetch('/api/auth/signout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
     persist(null);
     setSessionState(null);
   }, [session?.token]);

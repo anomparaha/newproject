@@ -67,8 +67,11 @@ export function evidenceRoutes(ctx: AppContext): Hono {
   });
 
   /**
-   * Serve stored evidence by hash. Content-addressed, so the body can be cached
-   * forever. A bad hash is a 400, a miss is a 404.
+   * Serve stored evidence by hash. Content-addressed, so the body never changes
+   * for a given hash and can be cached hard — but PRIVATELY. Evidence is vehicle
+   * photos and inspection PDFs that can contain personal data (plates, documents),
+   * so `private` keeps it out of shared/CDN caches while still letting the one
+   * browser that fetched it cache the bytes. A bad hash is a 400, a miss is a 404.
    */
   app.get('/evidence/:hash', (c) => {
     const hash = c.req.param('hash');
@@ -83,7 +86,7 @@ export function evidenceRoutes(ctx: AppContext): Hono {
       status: 200,
       headers: {
         'Content-Type': object.contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': 'private, max-age=31536000, immutable',
         'X-Content-Type-Options': 'nosniff',
       },
     });
