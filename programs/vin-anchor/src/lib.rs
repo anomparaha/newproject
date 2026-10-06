@@ -39,6 +39,33 @@ pub const DECISION_RELEASE_SELLER: u8 = 1;
 pub const DECISION_SPLIT: u8 = 2;
 pub const DECISION_BOND_SLASHED: u8 = 3;
 
+/// Explicit deal lifecycle. Numbers mirror STAGE in packages/shared/src/onchain-rules.ts
+/// for 1:1 readability (borsh serializes by ordinal; the = N values are documentary).
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DealState {
+    Empty = 0,
+    Staked = 1,
+    Listed = 2,
+    Reserved = 3,
+    Funded = 4,
+    Inspecting = 5,
+    ReportSubmitted = 6,
+    ReportAccepted = 7,
+    HandoverMarked = 8,
+    HandoverConfirmed = 9,
+    Released = 10,
+    Noted = 11,
+    Frozen = 90,
+    Resolved = 91,
+    Cancelled = 92,
+}
+
+/// Rejects any instruction called out of the valid DEAL_ORDER (the on-chain `revert`).
+fn require_state(current: DealState, allowed: &[DealState]) -> Result<()> {
+    require!(allowed.contains(&current), VinError::OutOfOrder);
+    Ok(())
+}
+
 #[program]
 pub mod vin_anchor {
     use super::*;
@@ -198,9 +225,13 @@ pub mod vin_anchor {
         deal.inspection_amount = inspection_amount;
         deal.vehicle_released_amount = 0;
         deal.inspection_released_amount = 0;
-        deal.frozen = false;
-        deal.cancelled = false;
-        deal.completed = false;
+        deal.state = DealState::Reserved;
+        deal.report_hash = [0u8; 32];
+        deal.report_odometer = 0;
+        deal.proof_hash = [0u8; 32];
+        deal.handover_marked_at = 0;
+        deal.confirm_window_secs = 72 * 3600;
+        deal.dispute_open = false;
         deal.evidence_root = [0u8; 32];
         deal.bump = ctx.bumps.deal;
 
@@ -226,22 +257,28 @@ pub mod vin_anchor {
 
     /// The buyer funds one leg. Call twice (vehicle, inspection).
     pub fn fund_leg(ctx: Context<FundLeg>, leg: u8, amount: u64) -> Result<()> {
-        require!(!ctx.accounts.deal.frozen, VinError::DealFrozen);
+        require!(!ctx.accounts.deal.dispute_open, VinError::DealFrozen);
         require!(amount > 0, VinError::ZeroAmount);
 
         // The vault is capped: incoming funds must not exceed the amount locked
         // when the deal opened, so the vault balance is always auditable.
         let (vault, current, expected) = match leg {
-            LEG_VEHICLE => (
-                ctx.accounts.vehicle_vault.to_account_info(),
-                ctx.accounts.vehicle_vault.amount,
-                ctx.accounts.deal.vehicle_amount,
-            ),
-            LEG_INSPECTION => (
-                ctx.accounts.inspection_vault.to_account_info(),
-                ctx.accounts.inspection_vault.amount,
-                ctx.accounts.deal.inspection_amount,
-            ),
+            LEG_VEHICLE => {
+                require_state(ctx.accounts.deal.state, &[DealState::Reserved])?;
+                (
+                    ctx.accounts.vehicle_vault.to_account_info(),
+                    ctx.accounts.vehicle_vault.amount,
+                    ctx.accounts.deal.vehicle_amount,
+                )
+            }
+            LEG_INSPECTION => {
+                require_state(ctx.accounts.deal.state, &[DealState::Funded])?;
+                (
+                    ctx.accounts.inspection_vault.to_account_info(),
+                    ctx.accounts.inspection_vault.amount,
+                    ctx.accounts.deal.inspection_amount,
+                )
+            }
             _ => return err!(VinError::InvalidLeg),
         };
         require!(
@@ -260,6 +297,11 @@ pub mod vin_anchor {
             ),
             amount,
         )?;
+        match leg {
+            LEG_VEHICLE => ctx.accounts.deal.state = DealState::Funded,
+            LEG_INSPECTION => ctx.accounts.deal.state = DealState::Inspecting,
+            _ => {}
+        }
         emit!(LegFunded {
             deal: ctx.accounts.deal.key(),
             leg,
@@ -282,7 +324,9 @@ pub mod vin_anchor {
             );
         }
         let deal_key = ctx.accounts.deal.key();
-        ctx.accounts.deal.frozen = true;
+        require_state(ctx.accounts.deal.state, &[DealState::Funded, DealState::Inspecting, DealState::ReportSubmitted, DealState::ReportAccepted, DealState::HandoverMarked])?;
+        ctx.accounts.deal.dispute_open = true;
+        ctx.accounts.deal.state = DealState::Frozen;
         emit!(DealFrozenEvent {
             deal: deal_key,
             reason_hash,
@@ -303,10 +347,26 @@ pub mod vin_anchor {
     ) -> Result<()> {
         require!(amount > 0, VinError::ZeroAmount);
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
-        // A frozen or already closed deal must not release.
-        require!(!ctx.accounts.deal.frozen, VinError::DealFrozen);
-        require!(!ctx.accounts.deal.cancelled, VinError::DealCancelled);
-        require!(!ctx.accounts.deal.completed, VinError::DealCompleted);
+        // A frozen or disputed deal must not release.
+        require!(!ctx.accounts.deal.dispute_open && ctx.accounts.deal.state != DealState::Frozen, VinError::DealFrozen);
+
+        // Copy primitives out before taking the mutable borrow (Clock + state checks).
+        let deal_state = ctx.accounts.deal.state;
+        let deal_handover_marked_at = ctx.accounts.deal.handover_marked_at;
+        let deal_confirm_window_secs = ctx.accounts.deal.confirm_window_secs;
+        match leg {
+            LEG_INSPECTION => {
+                require_state(deal_state, &[DealState::ReportAccepted, DealState::HandoverMarked, DealState::HandoverConfirmed])?;
+            }
+            LEG_VEHICLE => {
+                let now = Clock::get()?.unix_timestamp;
+                let ready = deal_state == DealState::HandoverConfirmed
+                    || (deal_state == DealState::HandoverMarked
+                        && now >= deal_handover_marked_at + deal_confirm_window_secs);
+                require!(ready, VinError::HandoverNotConfirmed);
+            }
+            _ => return err!(VinError::InvalidLeg),
+        }
 
         let deal = &mut ctx.accounts.deal;
         let (vault, destination, released_field, total) = match leg {
@@ -395,7 +455,7 @@ pub mod vin_anchor {
         if deal.vehicle_released_amount == deal.vehicle_amount
             && deal.inspection_released_amount == deal.inspection_amount
         {
-            deal.completed = true;
+            deal.state = DealState::Released;
             emit!(DealCompleted { deal: deal.key() });
         }
 
@@ -418,9 +478,7 @@ pub mod vin_anchor {
     pub fn refund_leg(ctx: Context<RefundLeg>, leg: u8, evidence_hash: [u8; 32]) -> Result<()> {
         let deal = &mut ctx.accounts.deal;
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
-        require!(!deal.frozen, VinError::DealFrozen);
-        require!(!deal.completed, VinError::DealCompleted);
-        require!(!deal.cancelled, VinError::DealCancelled);
+        require!(deal.state != DealState::Noted && deal.state != DealState::Cancelled, VinError::OutOfOrder);
 
         let (vault, amount) = match leg {
             LEG_VEHICLE => (
@@ -460,7 +518,7 @@ pub mod vin_anchor {
         if deal.vehicle_released_amount == deal.vehicle_amount
             && deal.inspection_released_amount == deal.inspection_amount
         {
-            deal.cancelled = true;
+            deal.state = DealState::Cancelled;
             emit!(DealCancelledEvent { deal: deal.key() });
         }
 
@@ -493,7 +551,7 @@ pub mod vin_anchor {
         require!(decision <= DECISION_BOND_SLASHED, VinError::InvalidDecision);
 
         let deal = &mut ctx.accounts.deal;
-        require!(deal.frozen, VinError::DealNotFrozen);
+        require_state(deal.state, &[DealState::Frozen])?;
 
         let vin_hash = deal.vin_hash;
         let buyer_key = deal.buyer;
@@ -597,10 +655,10 @@ pub mod vin_anchor {
             VinError::InexactSettlement
         );
 
-        deal.frozen = false;
+        deal.dispute_open = false;
         match decision {
-            DECISION_REFUND_BUYER | DECISION_BOND_SLASHED => deal.cancelled = true,
-            _ => deal.completed = true,
+            DECISION_REFUND_BUYER | DECISION_BOND_SLASHED => deal.state = DealState::Cancelled,
+            _ => deal.state = DealState::Released,
         }
 
         emit!(DisputeResolved {
@@ -655,7 +713,7 @@ pub mod vin_anchor {
     ) -> Result<()> {
         require!(ctx.accounts.relayer.key() == ctx.accounts.config.relayer, VinError::Unauthorized);
         let deal = &ctx.accounts.deal;
-        require!(deal.completed || deal.cancelled, VinError::DealNotFinished);
+        require_state(deal.state, &[DealState::Released])?;
         require!(owner == deal.buyer || owner == deal.seller, VinError::Unauthorized);
 
         let note = &mut ctx.accounts.note;
@@ -668,13 +726,57 @@ pub mod vin_anchor {
         note.created_at = Clock::get()?.unix_timestamp;
         note.bump = ctx.bumps.note;
 
+        let note_deal = note.deal;
+        let note_vin_hash = note.vin_hash;
+        ctx.accounts.deal.state = DealState::Noted;
+
         emit!(NoteRecorded {
-            deal: deal.key(),
-            vin_hash: deal.vin_hash,
+            deal: note_deal,
+            vin_hash: note_vin_hash,
             owner,
             evidence_root,
             asset,
         });
+        Ok(())
+    }
+
+    /// Inspector submits the workshop report hash + odometer. Inspecting -> ReportSubmitted.
+    pub fn submit_report(ctx: Context<SubmitReport>, report_hash: [u8; 32], odometer: u64) -> Result<()> {
+        let deal = &mut ctx.accounts.deal;
+        require!(ctx.accounts.inspector.key() == deal.inspector, VinError::Unauthorized);
+        require_state(deal.state, &[DealState::Inspecting])?;
+        deal.report_hash = report_hash;
+        deal.report_odometer = odometer;
+        deal.state = DealState::ReportSubmitted;
+        Ok(())
+    }
+
+    /// Buyer accepts the report. ReportSubmitted -> ReportAccepted.
+    pub fn accept_report(ctx: Context<AcceptReport>) -> Result<()> {
+        let deal = &mut ctx.accounts.deal;
+        require!(ctx.accounts.buyer.key() == deal.buyer, VinError::Unauthorized);
+        require_state(deal.state, &[DealState::ReportSubmitted])?;
+        deal.state = DealState::ReportAccepted;
+        Ok(())
+    }
+
+    /// Seller attaches a handover proof hash. ReportAccepted -> HandoverMarked.
+    pub fn mark_handover(ctx: Context<MarkHandover>, proof_hash: [u8; 32]) -> Result<()> {
+        let deal = &mut ctx.accounts.deal;
+        require!(ctx.accounts.seller.key() == deal.seller, VinError::Unauthorized);
+        require_state(deal.state, &[DealState::ReportAccepted])?;
+        deal.proof_hash = proof_hash;
+        deal.handover_marked_at = Clock::get()?.unix_timestamp;
+        deal.state = DealState::HandoverMarked;
+        Ok(())
+    }
+
+    /// Buyer confirms handover. HandoverMarked -> HandoverConfirmed.
+    pub fn confirm_handover(ctx: Context<ConfirmHandover>) -> Result<()> {
+        let deal = &mut ctx.accounts.deal;
+        require!(ctx.accounts.buyer.key() == deal.buyer, VinError::Unauthorized);
+        require_state(deal.state, &[DealState::HandoverMarked])?;
+        deal.state = DealState::HandoverConfirmed;
         Ok(())
     }
 
@@ -851,15 +953,19 @@ pub struct DealAccount {
     pub inspection_amount: u64,
     pub vehicle_released_amount: u64,
     pub inspection_released_amount: u64,
-    pub frozen: bool,
-    pub cancelled: bool,
-    pub completed: bool,
+    pub state: DealState,
+    pub report_hash: [u8; 32],
+    pub report_odometer: u64,
+    pub proof_hash: [u8; 32],
+    pub handover_marked_at: i64,
+    pub confirm_window_secs: i64,
+    pub dispute_open: bool,
     pub evidence_root: [u8; 32],
     pub bump: u8,
 }
 
 impl DealAccount {
-    pub const LEN: usize = 8 + 32 + 32 * 3 + 8 * 4 + 1 * 3 + 32 + 1;
+    pub const LEN: usize = 8 + 32 + 32 * 3 + 8 * 4 + 32 + 1 + (1 + 32 + 8 + 32 + 8 + 8 + 1);  // 291
 }
 
 #[account]
@@ -1067,6 +1173,34 @@ pub struct FreezeDeal<'info> {
     pub caller: Signer<'info>,
     #[account(mut, seeds = [b"deal", deal.vin_hash.as_ref(), deal.buyer.as_ref()], bump = deal.bump)]
     pub deal: Account<'info, DealAccount>,
+}
+
+#[derive(Accounts)]
+pub struct SubmitReport<'info> {
+    #[account(mut, seeds = [b"deal", deal.vin_hash.as_ref(), deal.buyer.as_ref()], bump = deal.bump)]
+    pub deal: Account<'info, DealAccount>,
+    pub inspector: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AcceptReport<'info> {
+    #[account(mut, seeds = [b"deal", deal.vin_hash.as_ref(), deal.buyer.as_ref()], bump = deal.bump)]
+    pub deal: Account<'info, DealAccount>,
+    pub buyer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct MarkHandover<'info> {
+    #[account(mut, seeds = [b"deal", deal.vin_hash.as_ref(), deal.buyer.as_ref()], bump = deal.bump)]
+    pub deal: Account<'info, DealAccount>,
+    pub seller: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ConfirmHandover<'info> {
+    #[account(mut, seeds = [b"deal", deal.vin_hash.as_ref(), deal.buyer.as_ref()], bump = deal.bump)]
+    pub deal: Account<'info, DealAccount>,
+    pub buyer: Signer<'info>,
 }
 
 #[derive(Accounts)]
@@ -1302,6 +1436,10 @@ pub struct NoteRecorded {
 
 #[error_code]
 pub enum VinError {
+    #[msg("Call is out of order for the current deal state.")]
+    OutOfOrder,
+    #[msg("Handover not confirmed and the confirmation window has not elapsed.")]
+    HandoverNotConfirmed,
     #[msg("Fee above the allowed cap")]
     FeeTooHigh,
     #[msg("Amount must be greater than zero")]

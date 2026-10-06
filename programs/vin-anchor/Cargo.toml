@@ -3,6 +3,12 @@ name = "vin-anchor"
 version = "0.1.0"
 description = "VIN escrow, bonds, and receipt registry. A receipt is not a vehicle title."
 edition = "2021"
+# MSRV pinned so cargo's MSRV-aware resolver (resolver.incompatible-rust-versions
+# = "fallback") selects dependency versions that build on the Solana SBF
+# platform-tools rustc. Without this (and with no committed Cargo.lock) resolution
+# drifts to crates that require edition2024 / rustc >= 1.80, which neither the SBF
+# toolchain nor Anchor's host-side IDL build (ark-ff MontFp) can compile.
+rust-version = "1.75"
 
 [lib]
 crate-type = ["cdylib", "lib"]

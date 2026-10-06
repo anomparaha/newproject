@@ -21,7 +21,7 @@ properti). Fase 1 memindahkan aturan yang sudah tetap itu ke Rust, bukan menemuk
 
 ## 2. Yang sudah ada di program sekarang
 
-14 instruksi di `programs/vin-anchor/src/lib.rs`:
+Instruksi inti escrow (sebelum Fase 1) di `programs/vin-anchor/src/lib.rs`:
 
 | Instruksi | Peran pemanggil | Catatan |
 | --- | --- | --- |
@@ -37,8 +37,13 @@ properti). Fase 1 memindahkan aturan yang sudah tetap itu ke Rust, bukan menemuk
 | `slash_bond` | arbiter | potongan masuk `dispute_fund`, bukan dompet tim |
 | `record_note` | relayer | `init` (bukan `init_if_needed`) — sekali catat |
 
-Yang **belum** ada: `DealState` (sekarang masih tiga bool: `frozen`, `cancelled`, `completed`),
-registry VIN, gerbang odometer, dan penolakan double-deal per VIN.
+> **Pembaruan (Fase 1 — kode).** Sejak baris di atas ditulis, empat hal yang dulu "belum ada"
+> kini **sudah** diimplementasikan di `lib.rs` dan lulus `cargo check` host (serta
+> `anchor build --no-idl`): `DealState` (enum, menggantikan tiga bool `frozen`/`cancelled`/`completed`),
+> registry VIN (`VinRecord`), gerbang odometer high-water, dan penolakan double-deal per VIN lewat
+> `record_reserve`. Program juga menambah empat instruksi tahap-deal — `submit_report`,
+> `accept_report`, `mark_handover`, `confirm_handover` — dengan gerbang `require_state` yang menolak
+> urutan di luar `DEAL_ORDER`. Status Definisi Selesai yang akurat ada di §8; status toolchain di §10.
 
 ## 3. Perubahan akun
 
@@ -159,21 +164,38 @@ menambah:
 | 18 | `record_note` dua kali → gagal (akun sudah ada) | 5 |
 | 19 | `resolve_dispute` dengan pembagian tidak tepat habis → revert | 4 |
 
+**Status (ditulis).** Kasus 15 (`release_leg` sebelum `HandoverConfirmed`) dan 17 (properti urutan
+di luar `DEAL_ORDER`) kini ada di `tests/vin_anchor.ts`; kasus 12–14 ada di `tests/vin_registry.ts`.
+Kasus 16 sudah tercakup kasus 6 (deal beku menolak `release_leg`), kasus 18 oleh pemeriksaan idempoten
+di dalam kasus 10 (`record_note` kedua ditolak), dan kasus 19 oleh kasus 7 (split tidak tepat habis).
+Kasus 5, 10, dan 11 ikut diperbarui agar menapaki alur `DealState` yang baru (laporan → terima →
+handover → konfirmasi) sebelum dana lepas. Semua file lulus pemeriksaan sintaks TypeScript; eksekusi
+hijau penuh tetap lewat CI karena butuh IDL (lihat §10).
+
 Kasus 12 dan 14 adalah **pembuktian langsung** dua bug logika yang sekarang sudah ditutup di API;
 Fase 1 harus menutupnya di on-chain juga.
 
 ## 8. Definisi selesai (Fase 1)
 
-- [ ] `DealState` menggantikan tiga bool; tabel transisi `DEAL_ORDER` dikodekan di Rust.
+- [x] `DealState` menggantikan tiga bool; tabel transisi `DEAL_ORDER` dikodekan di Rust lewat
+      `require_state`, plus empat instruksi tahap-deal (`submit_report`, `accept_report`,
+      `mark_handover`, `confirm_handover`). `release_leg` kendaraan wajib `HandoverConfirmed`;
+      `record_note` wajib `Released`. Type-check hijau via `cargo check` host + `anchor build --no-idl`.
 - [x] `VinRecord` + sembilan instruksi registry diimplementasikan di `lib.rs` (aditif: init_vin_record,
       record_listing, record_reserve, release_reserve, record_inspection, acknowledge_anomaly,
       record_completion, record_dispute, record_resolution). Type-check hijau via `cargo check` host; SBF/devnet lewat CI.
 - [x] Gerbang `max_odometer` (high-water) dan `anomaly_pending` di on-chain, plus event `OdometerAnomaly`.
-- [ ] Kasus uji 1–19 hijau, dan **kasus 12 & 14 terbukti merah** sebelum perbaikannya.
-- [ ] `anchor build && anchor test` hijau di CI (`.github/workflows/anchor.yml`).
-- [ ] `declare_id!` diganti dengan program ID devnet yang sebenarnya.
+- [x] Kasus uji 1–19 **ditulis** dan lulus pemeriksaan sintaks TypeScript: kasus 1–11, 15, 17 di
+      `tests/vin_anchor.ts`; kasus 12–14 di `tests/vin_registry.ts`; kasus 16 tercakup kasus 6,
+      kasus 18 oleh pemeriksaan idempoten di kasus 10, kasus 19 oleh kasus 7.
+- [ ] Kasus uji 1–19 **hijau saat dijalankan** (butuh IDL dari `anchor build` penuh → dijalankan di CI, lihat §10).
+- [ ] `anchor build && anchor test` **penuh** hijau di CI (`.github/workflows/anchor.yml`).
+- [ ] `declare_id!` diganti dengan program ID devnet yang sebenarnya (sekarang masih placeholder
+      `anchor init`; `tests/*.ts` memakai ID yang sama agar konsisten di localnet).
 - [ ] `AnchorEscrowProvider` di `services/api/src/escrow.ts` diimplementasikan, dan smoke test
-      dijalankan ulang terhadap devnet.
+      dijalankan ulang terhadap devnet. **Ditunda** — bergantung pada deploy devnet + IDL hasil
+      `anchor build` penuh; sampai itu ia sengaja tetap stub agar tidak ada klaim palsu bahwa dana
+      benar-benar on-chain.
 
 ## 9. Yang TIDAK termasuk Fase 1
 
@@ -186,13 +208,21 @@ Sengaja ditunda supaya permukaan audit tetap kecil:
 
 ## 10. Catatan lingkungan
 
-Status toolchain (diperbarui): WSL Ubuntu sudah punya `solana-cli 2.3.2`, `anchor-cli 0.30.1`, dan
-`rustc 1.88` host. Modul registry Fase 1 **type-check hijau** lewat `cargo check` host
-(`programs/vin-anchor`, selesai tanpa error — hanya warning `cfg(anchor-debug)` yang jinak).
-NAMUN `anchor build` SBF penuh **belum** bisa jalan di mesin ini: platform-tools SBF yang terpasang
-membawa `cargo 1.75`, sedangkan pohon dependensi sekarang (mis. `toml_edit 0.25.15`) menuntut fitur
-`edition2024` (butuh cargo ≥1.85). Ini blocker **lingkungan** (bukan kode) yang juga menghalangi
-program lama; perbaikannya adalah memperbarui platform-tools Solana atau menjalankan di CI.
+Status toolchain (diperbarui): WSL Ubuntu punya `solana-cli`, `anchor-cli 0.30.1`, dan `rustc 1.88`
+host. Seluruh program (DealState + registry) **type-check hijau** lewat `cargo check` host, dan
+**`anchor build --no-idl` hijau** — program ter-compile ke SBF (`vin_anchor.so`, 0 error, hanya
+warning `cfg(anchor-debug)` yang jinak). Blocker lama `edition2024`/lockfile sudah ditangani:
+`programs/vin-anchor/Cargo.toml` kini menetapkan `rust-version = "1.75"` sehingga resolver cargo yang
+sadar-MSRV (`resolver.incompatible-rust-versions = "fallback"`) memilih versi crate yang kompatibel
+dengan `rustc` platform-tools SBF. Repo tetap **tidak** meng-commit `Cargo.lock` agar CI me-resolve
+segar dengan toolchain-nya sendiri.
+
+Yang **belum** hijau di mesin ini: tahap generasi **IDL** pada `anchor build` penuh — penyebabnya di
+luar kode kita. Proc-macro `MontFp!` milik `ark-bn254` gagal di-parse oleh host `rustc 1.88`,
+sedangkan `rustc ≤ 1.79` terlalu tua untuk sebagian dependensi IDL (`rayon-core`, `wasm-bindgen`).
+Karena `tests/*.ts` meng-import IDL + types hasil build itu (`target/idl` + `target/types`),
+**`anchor test` penuh dijalankan di CI** dengan toolchain yang serasi (Solana `v4.3.0` + `rustc
+1.99.0`, lihat `.github/workflows/anchor.yml`), bukan di mesin ini.
 
 Yang harus dijalankan di mesin/CI dengan platform-tools yang cocok:
 

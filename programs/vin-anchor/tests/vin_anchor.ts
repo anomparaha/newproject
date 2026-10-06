@@ -118,6 +118,66 @@ describe('vin-anchor', () => {
     }
   });
 
+  // Builds a brand-new, fully-funded deal (state = Inspecting) with its own
+  // buyer, so the DealState cases below do not lean on the shared `deal`.
+  async function freshFundedDeal(): Promise<{ buyer: Keypair; deal: PublicKey; buyerToken: PublicKey }> {
+    const b = Keypair.generate();
+    const airdrop = await provider.connection.requestAirdrop(b.publicKey, 2 * LAMPORTS_PER_SOL);
+    await provider.connection.confirmTransaction(airdrop);
+    const bToken = await createAccount(provider.connection, b, usdcMint, b.publicKey);
+    await program.methods
+      .registerActor(ROLE_BUYER, hash(99))
+      .accounts({ payer: admin.publicKey, wallet: b.publicKey, actor: actorPda(b.publicKey) })
+      .rpc();
+    // The mint authority is `buyer` (see setup), so `buyer` signs the mint.
+    await mintTo(provider.connection, buyer, usdcMint, bToken, buyer, 100_000_000_000n);
+
+    const d = dealPda(b.publicKey);
+    const openIx = await program.methods
+      .openDeal(vinHash, new anchor.BN(VEHICLE_AMOUNT.toString()), new anchor.BN(INSPECTION_AMOUNT.toString()))
+      .accounts({
+        buyer: b.publicKey,
+        buyerActor: actorPda(b.publicKey),
+        sellerActor: actorPda(seller.publicKey),
+        inspectorActor: actorPda(inspector.publicKey),
+        seller: seller.publicKey,
+        inspector: inspector.publicKey,
+        deal: d,
+      })
+      .instruction();
+    const openVaultsIx = await program.methods
+      .openDealVaults()
+      .accounts({
+        buyer: b.publicKey,
+        deal: d,
+        vehicleVault: vaultPda(d, LEG_VEHICLE),
+        inspectionVault: vaultPda(d, LEG_INSPECTION),
+        usdcMint,
+      })
+      .instruction();
+    await provider.sendAndConfirm(new anchor.web3.Transaction().add(openIx, openVaultsIx), [b]);
+
+    for (const leg of [LEG_VEHICLE, LEG_INSPECTION]) {
+      const amount = leg === LEG_VEHICLE ? VEHICLE_AMOUNT : INSPECTION_AMOUNT;
+      await program.methods
+        .fundLeg(leg, new anchor.BN(amount.toString()))
+        .accounts({
+          buyer: b.publicKey,
+          deal: d,
+          vehicleVault: vaultPda(d, LEG_VEHICLE),
+          inspectionVault: vaultPda(d, LEG_INSPECTION),
+          buyerToken: bToken,
+          config: configPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([b])
+        .rpc();
+    }
+    return { buyer: b, deal: d, buyerToken: bToken };
+  }
+
   it('1. rejects open_deal when the workshop has not locked a bond (BondRequired)', async () => {
     deal = dealPda(buyer.publicKey);
     try {
@@ -262,6 +322,18 @@ describe('vin-anchor', () => {
     // checked as a delta (the caller passes a platform fee of zero, so the
     // inspector receives the full inspection leg).
     const inspectorBefore = (await getAccount(provider.connection, inspectorToken)).amount;
+    // DealState gate: the inspector files the report and the buyer accepts it
+    // before inspection funds can be released (Inspecting -> ReportAccepted).
+    await program.methods
+      .submitReport(hash(20), new anchor.BN(50000))
+      .accounts({ deal, inspector: inspector.publicKey })
+      .signers([inspector])
+      .rpc();
+    await program.methods
+      .acceptReport()
+      .accounts({ deal, buyer: buyer.publicKey })
+      .signers([buyer])
+      .rpc();
     await program.methods
       .releaseLeg(LEG_INSPECTION, new anchor.BN(INSPECTION_AMOUNT.toString()), hash(21), new anchor.BN(0))
       .accounts({
@@ -467,6 +539,20 @@ describe('vin-anchor', () => {
         .rpc();
     }
 
+    // DealState walk: the inspector files the report and the buyer accepts it.
+    // Only then may the inspection leg release (Inspecting -> ReportSubmitted ->
+    // ReportAccepted).
+    await program.methods
+      .submitReport(hash(80), new anchor.BN(50000))
+      .accounts({ deal: deal2, inspector: inspector.publicKey })
+      .signers([inspector])
+      .rpc();
+    await program.methods
+      .acceptReport()
+      .accounts({ deal: deal2, buyer: buyer2.publicKey })
+      .signers([buyer2])
+      .rpc();
+
     // Inspection funds release after the relayer verifies the (off-chain) report.
     await program.methods
       .releaseLeg(LEG_INSPECTION, new anchor.BN(INSPECTION_AMOUNT.toString()), hash(81), new anchor.BN(0))
@@ -482,11 +568,27 @@ describe('vin-anchor', () => {
       .signers([relayer])
       .rpc();
 
-    // With only one leg settled, the deal is NOT complete yet.
+    // With only one leg settled, the deal is NOT complete: releasing the
+    // inspection leg alone leaves the state at ReportAccepted.
     let state = await program.account.dealAccount.fetch(deal2);
-    'one leg does not close the deal'
+    assert.ok(state.state.reportAccepted, 'one leg settled must not close the deal');
 
-    // Vehicle funds release once the handover terms are met (off-chain).
+    // The seller marks the handover and the buyer confirms it; a confirmed
+    // handover is what unlocks the vehicle leg (ReportAccepted -> HandoverMarked
+    // -> HandoverConfirmed).
+    await program.methods
+      .markHandover(hash(85))
+      .accounts({ deal: deal2, seller: seller.publicKey })
+      .signers([seller])
+      .rpc();
+    await program.methods
+      .confirmHandover()
+      .accounts({ deal: deal2, buyer: buyer2.publicKey })
+      .signers([buyer2])
+      .rpc();
+
+    // Vehicle funds release once the handover is confirmed. With both legs
+    // fully released, the program flips the deal to Released.
     await program.methods
       .releaseLeg(LEG_VEHICLE, new anchor.BN(VEHICLE_AMOUNT.toString()), hash(82), new anchor.BN(0))
       .accounts({
@@ -502,9 +604,9 @@ describe('vin-anchor', () => {
       .rpc();
 
     state = await program.account.dealAccount.fetch(deal2);
-    'both legs settled -> the deal must be completed'
+    assert.ok(state.state.released, 'both legs settled must put the deal in Released');
 
-        // And now the receipt may be recorded.
+    // And now the receipt may be recorded.
     await program.methods
       .recordNote(buyer2.publicKey, new anchor.BN(1), hash(83), PublicKey.default)
       .accounts({ relayer: relayer.publicKey, deal: deal2, note: notePda(deal2, 1n) })
@@ -514,22 +616,93 @@ describe('vin-anchor', () => {
     const note = await program.account.noteAccount.fetch(notePda(deal2, 1n));
     assert.equal(note.owner.toBase58(), buyer2.publicKey.toBase58());
     assert.equal(Buffer.from(note.evidenceRoot).toString('hex'), Buffer.from(hash(83)).toString('hex'));
-  });
 
-  it('11. receipt: only after the deal closes, and it cannot be overwritten', async () => {
-    await program.methods
-      .recordNote(buyer.publicKey, new anchor.BN(1), hash(61), PublicKey.default)
-      .accounts({ relayer: relayer.publicKey, deal, note: notePda(deal, 1n) })
-      .signers([relayer])
-      .rpc();
-
-    // Re-recording the same receipt sequence must fail (the account exists).
+    // CASE 18: recording the same receipt sequence twice must fail — a receipt
+    // cannot be overwritten (the deal is now Noted and the note PDA exists).
     await assert.rejects(
       program.methods
-        .recordNote(buyer.publicKey, new anchor.BN(1), hash(62), PublicKey.default)
-        .accounts({ relayer: relayer.publicKey, deal, note: notePda(deal, 1n) })
+        .recordNote(buyer2.publicKey, new anchor.BN(1), hash(84), PublicKey.default)
+        .accounts({ relayer: relayer.publicKey, deal: deal2, note: notePda(deal2, 1n) })
         .signers([relayer])
         .rpc(),
     );
+  });
+
+  it('11. a receipt is rejected until the deal actually closes (Released)', async () => {
+    // The first `deal` ended in arbitration (Cancelled in test 8), not a clean
+    // close. A receipt is on-chain proof of a COMPLETED deal, so `record_note`
+    // must reject a deal that never reached Released.
+    await assert.rejects(
+      program.methods
+        .recordNote(buyer.publicKey, new anchor.BN(1), hash(61), PublicKey.default)
+        .accounts({ relayer: relayer.publicKey, deal, note: notePda(deal, 1n) })
+        .signers([relayer])
+        .rpc(),
+      /OutOfOrder|Released|urutan/,
+    );
+  });
+
+  it('15. release_leg for the vehicle before HandoverConfirmed is rejected', async () => {
+    // A fresh, fully-funded deal sits at `Inspecting`. The vehicle leg must not
+    // release until the buyer has confirmed the handover.
+    const { deal: d } = await freshFundedDeal();
+    await assert.rejects(
+      program.methods
+        .releaseLeg(LEG_VEHICLE, new anchor.BN(VEHICLE_AMOUNT.toString()), hash(101), new anchor.BN(0))
+        .accounts({
+          relayer: relayer.publicKey,
+          deal: d,
+          vehicleVault: vaultPda(d, LEG_VEHICLE),
+          inspectionVault: vaultPda(d, LEG_INSPECTION),
+          sellerToken,
+          inspectorToken,
+          feeDestination: feeToken,
+        })
+        .signers([relayer])
+        .rpc(),
+      /HandoverNotConfirmed/,
+    );
+  });
+
+  it('17. PROPERTY: every call outside DEAL_ORDER is rejected', async () => {
+    // From `Inspecting`, the only legal next step is `submit_report`. Every other
+    // deal-stage instruction must revert with OutOfOrder, and each legal step
+    // advances the machine exactly one stage.
+    const { buyer: b, deal: d } = await freshFundedDeal();
+
+    await assert.rejects(
+      program.methods.acceptReport().accounts({ deal: d, buyer: b.publicKey }).signers([b]).rpc(),
+      /OutOfOrder/,
+    );
+    await assert.rejects(
+      program.methods.markHandover(hash(121)).accounts({ deal: d, seller: seller.publicKey }).signers([seller]).rpc(),
+      /OutOfOrder/,
+    );
+    await assert.rejects(
+      program.methods.confirmHandover().accounts({ deal: d, buyer: b.publicKey }).signers([b]).rpc(),
+      /OutOfOrder/,
+    );
+
+    // The one legal step: Inspecting -> ReportSubmitted.
+    await program.methods
+      .submitReport(hash(122), new anchor.BN(50000))
+      .accounts({ deal: d, inspector: inspector.publicKey })
+      .signers([inspector])
+      .rpc();
+
+    // From ReportSubmitted, re-submitting or jumping ahead is still out of order.
+    await assert.rejects(
+      program.methods.submitReport(hash(123), new anchor.BN(50001)).accounts({ deal: d, inspector: inspector.publicKey }).signers([inspector]).rpc(),
+      /OutOfOrder/,
+    );
+    await assert.rejects(
+      program.methods.confirmHandover().accounts({ deal: d, buyer: b.publicKey }).signers([b]).rpc(),
+      /OutOfOrder/,
+    );
+
+    // The legal step advances to ReportAccepted.
+    await program.methods.acceptReport().accounts({ deal: d, buyer: b.publicKey }).signers([b]).rpc();
+    const s = await program.account.dealAccount.fetch(d);
+    assert.ok(s.state.reportAccepted, 'the only valid path reached ReportAccepted');
   });
 });
